@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1075.5 762.0" width="1075.5" height="762.0">
+  <defs>
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="115%">
+      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#000000" flood-opacity="0.6"/>
+    </filter>
+  </defs>
+  <style>
+    .mono { font-family: ui-monospace, 'SF Mono', Menlo, Monaco, Consolas, monospace; font-size: 13px; font-variant-ligatures: none; }
+  </style>
+  <rect width="100%" height="100%" fill="#0d1117"/>
+  <g transform="translate(25.0, 20.0)" filter="url(#shadow)">
+    <!-- Window Body -->
+    <rect width="1025.5" height="712.0" rx="10" ry="10" fill="#1a1b26" stroke="#292e42" stroke-width="1"/>
+    <!-- Title Bar -->
+    <path d="M 0,10 A 10,10 0 0 1 10,0 L 1015.5,0 A 10,10 0 0 1 1025.5,10 L 1025.5,44.0 L 0,44.0 Z" fill="#16161e"/>
+    <!-- Window Controls -->
+    <circle cx="20" cy="18" r="6" fill="#f7768e"/>
+    <circle cx="38" cy="18" r="6" fill="#e0af68"/>
+    <circle cx="56" cy="18" r="6" fill="#9ece6a"/>
+    <!-- Window Title -->
+    <text x="512.8" y="22" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" fill="#7aa2f7" font-weight="600" text-anchor="middle">telepilot — Global Configuration &amp; Language Switcher (En / Ru)</text>
+    <rect x="196.0" y="260.0" width="594.3" height="18.0" fill="#283457"/>
+    <rect x="196.0" y="278.0" width="594.3" height="18.0" fill="#9ece69"/>
+    <rect x="196.0" y="476.0" width="289.3" height="18.0" fill="#79a2f7"/>
+    <rect x="508.8" y="476.0" width="289.3" height="18.0" fill="#9ece69"/>
+    <rect x="196.0" y="512.0" width="289.3" height="18.0" fill="#3b4161"/>
+    <text class="mono" xml:space="preserve"></text>
+    <text class="mono" xml:space="preserve"></text>
+    <text class="mono" xml:space="preserve"></text>
+    <text class="mono" xml:space="preserve"></text>
+    <text class="mono" xml:space="preserve"></text>
+    <text class="mono" xml:space="preserve"><tspan x="172.6" y="147.5" fill="#79a2f7">╔════════════════════════════════════════════════════════════════════════════════════╗</tspan></text>
+    <text class="mono" xml:space="preserve"><tspan x="172.6" y="165.5" fill="#79a2f7">║</tspan><tspan x="837.3" y="165.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" xml:space="preserve"><tspan x="172.6" y="183.5" fill="#79a2f7">║</tspan><tspan x="196.0" y="183.5" fill="#7dcfff" font-weight="bold">─Global Configuration (TelePilot)─</tspan><tspan x="837.3" y="183.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" xml:space="preserve"><tspan x="172.6" y="201.5" fill="#79a2f7">║</tspan><tspan x="837.3" y="201.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" xml:space="preserve"><tspan x="172.6" y="219.5" fill="#79a2f7">║</tspan><tspan x="196.0" y="219.5" fill="#e0af68" font-weight="bold">Manage application preferences, preferred language, and system paths.</tspan><tspan x="837.3" y="219.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" xml:space="preserve"><tspan x="172.6" y="237.5" fill="#79a2f7">║</tspan><tspan x="837.3" y="237.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" xml:space="preserve"><tspan x="172.6" y="255.5" fill="#79a2f7">║</tspan><tspan x="196.0" y="255.5" fill="#79a2f7" font-weight="bold">Interface Language:</tspan><tspan x="837.3" y="255.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" xml:space="preserve"><tspan x="172.6" y="273.5" fill="#79a2f7">║</tspan><tspan x="203.9" y="273.5" fill="#565f89">  [1] En — English (Default)</tspan><tspan x="837.3" y="273.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" xml:space="preserve"><tspan x="172.6" y="291.5" fill="#79a2f7">║</tspan><tspan x="203.9" y="291.5" fill="#1a1b26" font-weight="bold">▸ [2] Ru — Русский (Russian)</tspan><tspan x="837.3" y="291.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" xml:space="preserve"><tspan x="172.6" y="309.5" fill="#79a2f7">║</tspan><tspan x="837.3" y="309.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" xml:space="preserve"><tspan x="172.6" y="327.5" fill="#79a2f7">║</tspan><tspan x="196.0" y="327.5" fill="#3b4161">┌──────────────────────────────────────────────────────────────────────────────┐</tspan><tspan x="837.3" y="327.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" xml:space="preserve"><tspan x="172.6" y="345.5" fill="#79a2f7">║</tspan><tspan x="196.0" y="345.5" fill="#3b4161">│</tspan><tspan x="211.7" y="345.5" fill="#c0caf5">Active AI Model:      agy-cli/gemini-2.5-pro                              </tspan><tspan x="813.8" y="345.5" fill="#3b4161">│</tspan><tspan x="837.3" y="345.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" xml:space="preserve"><tspan x="172.6" y="363.5" fill="#79a2f7">║</tspan><tspan x="196.0" y="363.5" fill="#3b4161">│</tspan><tspan x="211.7" y="363.5" fill="#c0caf5">Default Period:       1m                                                  </tspan><tspan x="813.8" y="363.5" fill="#3b4161">│</tspan><tspan x="837.3" y="363.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" xml:space="preserve"><tspan x="172.6" y="381.5" fill="#79a2f7">║</tspan><tspan x="196.0" y="381.5" fill="#3b4161">│</tspan><tspan x="211.7" y="381.5" fill="#c0caf5">Default Skill:        period-summary                                      </tspan><tspan x="813.8" y="381.5" fill="#3b4161">│</tspan><tspan x="837.3" y="381.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" xml:space="preserve"><tspan x="172.6" y="399.5" fill="#79a2f7">║</tspan><tspan x="196.0" y="399.5" fill="#3b4161">│</tspan><tspan x="211.7" y="399.5" fill="#c0caf5">Skills Directory:     /Users/ey.samarin/coding/telegram-ai-client/.agent..</tspan><tspan x="813.8" y="399.5" fill="#3b4161">│</tspan><tspan x="837.3" y="399.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" xml:space="preserve"><tspan x="172.6" y="417.5" fill="#79a2f7">║</tspan><tspan x="196.0" y="417.5" fill="#3b4161">│</tspan><tspan x="211.7" y="417.5" fill="#c0caf5">Exports Directory:    /var/folders/ry/9q5v6wbj44bgh149m_tnzqg80000gn/T/t..</tspan><tspan x="813.8" y="417.5" fill="#3b4161">│</tspan><tspan x="837.3" y="417.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" xml:space="preserve"><tspan x="172.6" y="435.5" fill="#79a2f7">║</tspan><tspan x="196.0" y="435.5" fill="#3b4161">│</tspan><tspan x="211.7" y="435.5" fill="#c0caf5">Telegram Server:      149.154.167.50:443 (DC 2)                           </tspan><tspan x="813.8" y="435.5" fill="#3b4161">│</tspan><tspan x="837.3" y="435.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" xml:space="preserve"><tspan x="172.6" y="453.5" fill="#79a2f7">║</tspan><tspan x="196.0" y="453.5" fill="#3b4161">└──────────────────────────────────────────────────────────────────────────────┘</tspan><tspan x="837.3" y="453.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" xml:space="preserve"><tspan x="172.6" y="471.5" fill="#79a2f7">║</tspan><tspan x="837.3" y="471.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" xml:space="preserve"><tspan x="172.6" y="489.5" fill="#79a2f7">║</tspan><tspan x="196.0" y="489.5" fill="#1a1b26" font-weight="bold">Toggle Language (F2 / Space / h / l)</tspan><tspan x="540.1" y="489.5" fill="#1a1b26" font-weight="bold">Save &amp; Close (Enter / Ctrl+S)</tspan><tspan x="837.3" y="489.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" xml:space="preserve"><tspan x="172.6" y="507.5" fill="#79a2f7">║</tspan><tspan x="837.3" y="507.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" xml:space="preserve"><tspan x="172.6" y="525.5" fill="#79a2f7">║</tspan><tspan x="258.6" y="525.5" fill="#c0caf5">Cancel / Close (Esc)</tspan><tspan x="837.3" y="525.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" xml:space="preserve"><tspan x="172.6" y="543.5" fill="#79a2f7">║</tspan><tspan x="837.3" y="543.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" xml:space="preserve"><tspan x="172.6" y="561.5" fill="#79a2f7">║</tspan><tspan x="196.0" y="561.5" fill="#565f89">Hotkey tip: Capital &#39;C&#39; opens this Global Config window anytime from main view.</tspan><tspan x="837.3" y="561.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" xml:space="preserve"><tspan x="172.6" y="579.5" fill="#79a2f7">║</tspan><tspan x="837.3" y="579.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" xml:space="preserve"><tspan x="172.6" y="597.5" fill="#79a2f7">╚════════════════════════════════════════════════════════════════════════════════════╝</tspan></text>
+    <text class="mono" xml:space="preserve"></text>
+    <text class="mono" xml:space="preserve"></text>
+    <text class="mono" xml:space="preserve"></text>
+    <text class="mono" xml:space="preserve"></text>
+    <text class="mono" xml:space="preserve"></text>
+  </g>
+</svg>

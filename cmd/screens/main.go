@@ -284,6 +284,34 @@ func main() {
 		saveScreen(view, cols, rows, "telepilot — MTProto Connection Diagnostics & QR Code Login", "qr_login", assetsDir)
 	}
 
+	// 6. Global Configuration & Language Selector (Press 'C')
+	{
+		m := tui.NewModel(cfg, aiEng, mtSvc, true)
+		mUpdated, _ := m.Update(tea.WindowSizeMsg{Width: cols, Height: rows})
+		m = mUpdated.(*tui.Model)
+
+		// Set Global Config modal with Russian option highlighted
+		m.SetGlobalConfigModalForCapture(1)
+
+		view := m.View()
+		saveScreen(view, cols, rows, "telepilot — Global Configuration & Language Switcher (En / Ru)", "language_config", assetsDir)
+	}
+
+	// 7. Embedded Skill Preview & In-TUI Editing (Press 'v' or 'e' in Tab 4)
+	{
+		m := tui.NewModel(cfg, aiEng, mtSvc, true)
+		mUpdated, _ := m.Update(tea.WindowSizeMsg{Width: cols, Height: rows})
+		mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'4'}})
+		m = mUpdated.(*tui.Model)
+
+		// Set Skill Preview modal for the selected skill
+		m.SetSkillPreviewModalForCapture(0)
+
+		view := m.View()
+		saveScreen(view, cols, rows, "telepilot — In-TUI Skill Preview & Editor ($EDITOR Integration)", "skill_editor_preview", assetsDir)
+	}
+
+
 	fmt.Println("\nAll screenshots generated successfully in assets/!")
 }
 

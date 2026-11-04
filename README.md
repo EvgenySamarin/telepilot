@@ -58,7 +58,7 @@ Full chronological timeline of conversation messages with inline speech recognit
 
 ---
 
-### 4. Modular AI Skills & Re-Prompting (`[4:Skills & Re-Run]`)
+### 4. Modular AI Skills & Direct In-TUI Editing (`[4:Skills & Re-Run]`)
 Extensible skill system stored in `.agents/skills/`:
 - **Pre-installed Skills**:
   - `period-summary`: Comprehensive executive report with action items and decisions.
@@ -67,15 +67,37 @@ Extensible skill system stored in `.agents/skills/`:
   - `voice-transcribe`: High-fidelity audio speech-to-text transcription.
   - `document-summarize`: PDF, CSV, and specification document distillation.
   - `image-describe` & `video-describe`: Multimodal computer vision analysis.
-- **Custom Prompts & Hotkeys**: Press `a` or `m` to attach custom instructions, `e` to edit any skill in `$EDITOR`, `n` to create a new skill, and `r` to re-run AI inference without re-downloading media.
+- **Direct Skill Preview & Editing in TUI**:
+  - Press **`v`** to open the embedded **Skill Preview Modal** to read the full prompt and YAML metadata.
+  - Press **`e`** to open the skill's `SKILL.md` directly in your preferred `$EDITOR` (`vim`, `nano`, `VS Code`).
+  - Press **`a`** or **`m`** to attach custom extra notes and instructions for the current run.
+  - Press **`n`** to scaffold a brand-new skill template right from the terminal.
+  - Press **`r`** to re-run AI inference instantly without re-downloading media.
 
 <p align="center">
   <img src="assets/skills_browser.png" alt="TelePilot Modular AI Skills Browser" width="100%" />
 </p>
 
+<p align="center">
+  <img src="assets/skill_editor_preview.png" alt="TelePilot In-TUI Skill Preview and Editor" width="100%" />
+</p>
+
 ---
 
-### 5. Instant Phone QR Pairing & MTProto Diagnostics (`L` or `--qr`)
+### 5. Global Configuration & Bilingual Language Switcher (`C`)
+TelePilot features first-class internationalization with instant switching between English and Russian:
+- Press **`C`** (capital C) anytime from the main view to open the **Global Configuration** modal.
+- Toggle between **English (`En`)** and **Russian (`Ru — Русский`)** using `Space` or `1`/`2` keys.
+- Instant live localization across all top status bars, sidebars, main panels, summary cards, and keyboard action hints.
+- Real-time diagnostic overview of active AI models, skills folder, exports path, and MTProto server datacenter.
+
+<p align="center">
+  <img src="assets/language_config.png" alt="TelePilot Global Configuration & Language Switcher" width="100%" />
+</p>
+
+---
+
+### 6. Instant Phone QR Pairing & MTProto Diagnostics (`L` or `--qr`)
 No complicated auth flows—sign in in seconds with your phone camera:
 - Press **`L`** anytime in the TUI (or launch with `telepilot --qr`).
 - Live rendered Unicode QR code block right in your terminal.
@@ -143,9 +165,10 @@ telepilot --qr
 | **`p`** | Change parsing period (e.g. `7d`, `2w`, `1m`, `3m`, or `YYYY-MM-DD..YYYY-MM-DD`) |
 | **`1` – `5`** | Switch main view (`Summary`, `Media Vault`, `Transcript`, `Skills`, `Trace`) |
 | **`r`** | Re-run AI analysis on active period folder using selected skill |
-| **`e`** | Open selected skill's `SKILL.md` in `$EDITOR` (`vim`, `nano`, `code`) |
+| **`v`** | QuickLook preview for images/PDFs/audio, or open embedded **Skill Preview** modal in Tab 4 |
+| **`e`** | Open selected skill's `SKILL.md` directly in `$EDITOR` (`vim`, `nano`, `code`) |
 | **`n`** | Create a new custom skill in `.agents/skills/` from template |
-| **`v`** | QuickLook preview for images/PDFs/QR codes or playback voice notes (`afplay`) |
+| **`a` / `m`** | Edit optional extra notes / instructions for the active skill |
 | **`o`** | Open active period folder in **macOS Finder** |
 | **`d` / `x`** | Delete selected period folder |
 | **`L`** | Open **MTProto Connection Diagnostic & QR Code Login** modal |

@@ -3068,3 +3068,20 @@ func (m *Model) SetQRModalForCapture(status, qrArt, qrPNGPath string) {
 	m.qrPNGPath = qrPNGPath
 }
 
+// SetGlobalConfigModalForCapture configures the model to display the Global Configuration modal.
+func (m *Model) SetGlobalConfigModalForCapture(langIdx int) {
+	m.activeModal = modalGlobalConfig
+	m.cfgLangIndex = langIdx
+}
+
+// SetSkillPreviewModalForCapture configures the model to display the Skill Preview modal.
+func (m *Model) SetSkillPreviewModalForCapture(skillIdx int) {
+	m.activeTab = 4
+	if skillIdx >= 0 && skillIdx < len(m.skillList) {
+		m.skillCursor = skillIdx
+	}
+	m.previewScroll = 0
+	m.activeModal = modalSkillPreview
+}
+
+
