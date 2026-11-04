@@ -114,10 +114,9 @@ func RenderTerminalSVG(viewStr string, widthCols, heightRows int, title string) 
 	for y := 0; y < heightRows; y++ {
 		line := buf.Line(y)
 		textY := padTop + float64(y)*charH + 13.5 // baseline
-		sb.WriteString(fmt.Sprintf(`    <text class="mono" xml:space="preserve">`))
+		sb.WriteString(fmt.Sprintf(`    <text class="mono" x="%.1f" y="%.1f" xml:space="preserve">`, padX, textY))
 
 		type runSpan struct {
-			col  int
 			text string
 			fg   string
 			bold bool
@@ -143,12 +142,12 @@ func RenderTerminalSVG(viewStr string, widthCols, heightRows int, title string) 
 			}
 
 			if currentRun.text == "" {
-				currentRun = runSpan{col: x, text: string(r), fg: fg, bold: bold}
+				currentRun = runSpan{text: string(r), fg: fg, bold: bold}
 			} else if currentRun.fg == fg && currentRun.bold == bold {
 				currentRun.text += string(r)
 			} else {
 				runs = append(runs, currentRun)
-				currentRun = runSpan{col: x, text: string(r), fg: fg, bold: bold}
+				currentRun = runSpan{text: string(r), fg: fg, bold: bold}
 			}
 		}
 		if currentRun.text != "" {
@@ -156,15 +155,11 @@ func RenderTerminalSVG(viewStr string, widthCols, heightRows int, title string) 
 		}
 
 		for _, r := range runs {
-			if strings.TrimSpace(r.text) == "" {
-				continue
-			}
 			boldAttr := ""
 			if r.bold {
 				boldAttr = ` font-weight="bold"`
 			}
-			xCoord := padX + float64(r.col)*charW
-			sb.WriteString(fmt.Sprintf(`<tspan x="%.1f" y="%.1f" fill="%s"%s>%s</tspan>`, xCoord, textY, r.fg, boldAttr, html.EscapeString(r.text)))
+			sb.WriteString(fmt.Sprintf(`<tspan fill="%s"%s>%s</tspan>`, r.fg, boldAttr, html.EscapeString(r.text)))
 		}
 		sb.WriteString("</text>\n")
 	}
