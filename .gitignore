@@ -25,6 +25,8 @@ telegram_login_qr.png
 /bin/
 /telepilot
 /tgp
+.venv/
+
 
 # macOS system & directory indexing metadata
 .DS_Store

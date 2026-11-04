@@ -181,7 +181,7 @@ telepilot --qr
 
 ## 🛠️ Regenerating Assets & Screenshots
 
-TelePilot includes a built-in terminal capture utility that renders the Lipgloss Bubble Tea screens directly into vector SVGs and pixel-perfect PNGs:
+TelePilot includes a built-in terminal capture utility that renders the Lipgloss Bubble Tea screens directly into pixel-perfect PNGs with native TrueType monospace typography:
 
 ```bash
 go run cmd/screens/main.go
