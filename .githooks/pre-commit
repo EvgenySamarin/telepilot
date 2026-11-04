@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# ============================================================================
+# TelePilot Pre-Commit Security Guard
+# Blocks commits containing local secrets, credentials, or session files.
+# ============================================================================
+
+set -e
+
+FORBIDDEN_PATTERNS='(^|/)(\.env|\.env\..*|.*\.session|.*\.session-journal|cache\.db|.*\.db|telegram_login_qr\.png|exports/.*|data/.*)$'
+
+# Check staged files against forbidden pattern, allowing .env.example
+STAGED_FORBIDDEN=$(git diff --cached --name-only | grep -E "$FORBIDDEN_PATTERNS" | grep -v '\.env\.example$' || true)
+
+if [ -n "$STAGED_FORBIDDEN" ]; then
+    echo ""
+    echo "❌ [SECURITY ERROR] Attempting to commit forbidden sensitive file(s):"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "$STAGED_FORBIDDEN"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "These files contain credentials, active sessions, or private chat data."
+    echo "To unstage them, run:"
+    echo "  git reset HEAD <file>"
+    echo ""
+    exit 1
+fi
+
+# Deep scan staged files for potential private keys or hardcoded API tokens
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(go|sh|json|yaml|yml|md)$' || true)
+
+for f in $STAGED_FILES; do
+    if [ -f "$f" ]; then
+        if grep -q "BEGIN RSA PRIVATE KEY\|BEGIN OPENSSH PRIVATE KEY\|BEGIN PRIVATE KEY" "$f"; then
+            echo "❌ [SECURITY ERROR] Private key pattern detected in staged file: $f"
+            exit 1
+        fi
+    fi
+done
+
+exit 0
+
