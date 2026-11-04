@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"html"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -27,19 +26,14 @@ func hexColor(c ansi.Color, defaultHex string) string {
 		return defaultHex
 	}
 	r, g, b, _ := c.RGBA()
-	r8, g8, b8 := r>>8, g>>8, b>>8
-	// Boost very dark muted text for high contrast and readability on dark background
-	if r8 < 95 && g8 < 105 && b8 < 145 && r8 > 30 {
-		return "#7aa2f7" // Tokyo Night readable accent blue
-	}
-	return fmt.Sprintf("#%02x%02x%02x", r8, g8, b8)
+	return fmt.Sprintf("#%02x%02x%02x", r>>8, g>>8, b>>8)
 }
 
 func RenderTerminalSVG(viewStr string, widthCols, heightRows int, title string) string {
 	buf := cellbuf.NewBuffer(widthCols, heightRows)
 	cellbuf.SetContent(buf, viewStr)
 
-	charW := 8.0
+	charW := 7.82
 	charH := 18.0
 	padX := 24.0
 	padTop := 44.0 // title bar height
@@ -63,10 +57,10 @@ func RenderTerminalSVG(viewStr string, widthCols, heightRows int, title string) 
     </filter>
   </defs>
   <style>
-    .mono { font-family: ui-monospace, 'SF Mono', Menlo, Monaco, Consolas, monospace; font-size: 13px; font-variant-ligatures: none; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 13px; font-variant-ligatures: none; }
   </style>
   <rect width="100%%" height="100%%" fill="#0d1117"/>
-  <g transform="translate(%.1f, %.1f)" filter="url(#shadow)">
+  <g transform="translate(%.1f, %.1f)" filter="url(#shadow)" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace" font-size="13">
     <!-- Window Body -->
     <rect width="%.1f" height="%.1f" rx="10" ry="10" fill="#1a1b26" stroke="#292e42" stroke-width="1"/>
     <!-- Title Bar -->
@@ -115,69 +109,61 @@ func RenderTerminalSVG(viewStr string, widthCols, heightRows int, title string) 
 		flushBg(len(line))
 	}
 
-	// 2. Render text spans line by line with explicit column alignment and lengthAdjust
+	// 2. Render text spans line by line
 	for y := 0; y < heightRows; y++ {
 		line := buf.Line(y)
 		textY := padTop + float64(y)*charH + 13.5 // baseline
-		sb.WriteString(fmt.Sprintf(`    <text class="mono" y="%.1f" xml:space="preserve">`, textY))
+		sb.WriteString(fmt.Sprintf(`    <text class="mono" x="%.1f" y="%.1f" xml:space="preserve">`, padX, textY))
 
 		type runSpan struct {
-			startCol int
-			numCols  int
-			text     string
-			fg       string
-			bold     bool
+			col  int
+			text string
+			fg   string
+			bold bool
 		}
 		var runs []runSpan
-		var curRun runSpan
+		var currentRun runSpan
 
 		for x := 0; x < widthCols && x < len(line); x++ {
 			c := line[x]
 			r := ' '
-			fg := "#c0caf5" // default clear bright Tokyo Night text
+			fg := "#a9b1d6"
 			bold := false
-			w := 1
 			if c != nil {
 				if c.Rune != 0 {
 					r = c.Rune
 				}
-				if c.Width > 0 {
-					w = c.Width
-				}
 				if c.Style.Fg != nil {
-					fg = hexColor(c.Style.Fg, "#c0caf5")
+					fg = hexColor(c.Style.Fg, "#a9b1d6")
 				}
 				if c.Style.Attrs&cellbuf.BoldAttr != 0 {
 					bold = true
 				}
 			}
 
-			if curRun.text == "" {
-				curRun = runSpan{startCol: x, numCols: w, text: string(r), fg: fg, bold: bold}
-			} else if curRun.fg == fg && curRun.bold == bold && (curRun.startCol+curRun.numCols == x) {
-				curRun.text += string(r)
-				curRun.numCols += w
+			if currentRun.text == "" {
+				currentRun = runSpan{col: x, text: string(r), fg: fg, bold: bold}
+			} else if currentRun.fg == fg && currentRun.bold == bold {
+				currentRun.text += string(r)
 			} else {
-				runs = append(runs, curRun)
-				curRun = runSpan{startCol: x, numCols: w, text: string(r), fg: fg, bold: bold}
+				runs = append(runs, currentRun)
+				currentRun = runSpan{col: x, text: string(r), fg: fg, bold: bold}
 			}
 		}
-		if curRun.text != "" {
-			runs = append(runs, curRun)
+		if currentRun.text != "" {
+			runs = append(runs, currentRun)
 		}
 
 		for _, r := range runs {
 			if strings.TrimSpace(r.text) == "" {
-				continue // spaces do not need glyphs; background rects handle highlights
+				continue
 			}
 			boldAttr := ""
 			if r.bold {
 				boldAttr = ` font-weight="bold"`
 			}
-			xCoord := padX + float64(r.startCol)*charW
-			spanW := float64(r.numCols) * charW
-			sb.WriteString(fmt.Sprintf(`<tspan x="%.1f" textLength="%.1f" lengthAdjust="spacing" fill="%s"%s>%s</tspan>`,
-				xCoord, spanW, r.fg, boldAttr, html.EscapeString(r.text)))
+			xCoord := padX + float64(r.col)*charW
+			sb.WriteString(fmt.Sprintf(`<tspan x="%.1f" y="%.1f" fill="%s"%s>%s</tspan>`, xCoord, textY, r.fg, boldAttr, html.EscapeString(r.text)))
 		}
 		sb.WriteString("</text>\n")
 	}
@@ -224,119 +210,118 @@ func main() {
 	cols := 125
 	rows := 36
 
-	screens := []struct {
-		name  string
-		title string
-		setup func() *tui.Model
-	}{
-		{
-			name:  "demo_dashboard",
-			title: "telepilot — Tokyo-Night Terminal UI (Executive Summary)",
-			setup: func() *tui.Model {
-				m := tui.NewModel(cfg, aiEng, mtSvc, true)
-				mUpdated, _ := m.Update(tea.WindowSizeMsg{Width: cols, Height: rows})
-				m = mUpdated.(*tui.Model)
-				mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
-				mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
-				mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeySpace})
-				mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
-				mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
-				return mUpdated.(*tui.Model)
-			},
-		},
-		{
-			name:  "media_vault",
-			title: "telepilot — Multimodal Media Vault (Voice Transcripts, Diagrams & Specs)",
-			setup: func() *tui.Model {
-				m := tui.NewModel(cfg, aiEng, mtSvc, true)
-				mUpdated, _ := m.Update(tea.WindowSizeMsg{Width: cols, Height: rows})
-				mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
-				mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
-				return mUpdated.(*tui.Model)
-			},
-		},
-		{
-			name:  "transcript_view",
-			title: "telepilot — Chronological Chat Timeline & Inline Voice Transcripts",
-			setup: func() *tui.Model {
-				m := tui.NewModel(cfg, aiEng, mtSvc, true)
-				mUpdated, _ := m.Update(tea.WindowSizeMsg{Width: cols, Height: rows})
-				mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'3'}})
-				return mUpdated.(*tui.Model)
-			},
-		},
-		{
-			name:  "skills_browser",
-			title: "telepilot — Modular AI Skills Catalog (.agents/skills) & Re-Prompting",
-			setup: func() *tui.Model {
-				m := tui.NewModel(cfg, aiEng, mtSvc, true)
-				mUpdated, _ := m.Update(tea.WindowSizeMsg{Width: cols, Height: rows})
-				mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'4'}})
-				return mUpdated.(*tui.Model)
-			},
-		},
-		{
-			name:  "qr_login",
-			title: "telepilot — MTProto Connection Diagnostics & QR Code Login",
-			setup: func() *tui.Model {
-				m := tui.NewModel(cfg, aiEng, mtSvc, true)
-				mUpdated, _ := m.Update(tea.WindowSizeMsg{Width: cols, Height: rows})
-				m = mUpdated.(*tui.Model)
-				qrPath := filepath.Join(tmpDir, "qr.png")
-				qrArt, _ := mtproto.RenderQRHalfBlocks("tg://login?token=AQAAAI_DEMO_TOKEN_TELEPILOT_42x9K", qrPath)
-				m.SetQRModalForCapture(
-					"[✓] Ready to scan: Open Telegram on your phone → Settings → Devices → Link Desktop Device",
-					qrArt,
-					qrPath,
-				)
-				return m
-			},
-		},
-		{
-			name:  "language_config",
-			title: "telepilot — Global Configuration & Language Switcher (En / Ru)",
-			setup: func() *tui.Model {
-				m := tui.NewModel(cfg, aiEng, mtSvc, true)
-				mUpdated, _ := m.Update(tea.WindowSizeMsg{Width: cols, Height: rows})
-				m = mUpdated.(*tui.Model)
-				m.SetGlobalConfigModalForCapture(1)
-				return m
-			},
-		},
-		{
-			name:  "skill_editor_preview",
-			title: "telepilot — In-TUI Skill Preview & Editor ($EDITOR Integration)",
-			setup: func() *tui.Model {
-				m := tui.NewModel(cfg, aiEng, mtSvc, true)
-				mUpdated, _ := m.Update(tea.WindowSizeMsg{Width: cols, Height: rows})
-				mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'4'}})
-				m = mUpdated.(*tui.Model)
-				m.SetSkillPreviewModalForCapture(0)
-				return m
-			},
-		},
+	// 1. Demo Dashboard (Tab 1: Summary)
+	{
+		m := tui.NewModel(cfg, aiEng, mtSvc, true)
+		mUpdated, _ := m.Update(tea.WindowSizeMsg{Width: cols, Height: rows})
+		m = mUpdated.(*tui.Model)
+		// Select another chat so the counter is 2/5
+		mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+		mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+		mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeySpace}) // select 3rd chat
+		mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+		mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+		m = mUpdated.(*tui.Model)
+
+		view := m.View()
+		saveScreen(view, cols, rows, "telepilot — Tokyo-Night Terminal UI (Executive Summary)", "demo_dashboard", assetsDir)
 	}
 
-	for _, s := range screens {
-		m := s.setup()
-		svg := RenderTerminalSVG(m.View(), cols, rows, s.title)
-		pngPath := filepath.Join(assetsDir, s.name+".png")
+	// 2. Media Vault (Tab 2: Media Vault)
+	{
+		m := tui.NewModel(cfg, aiEng, mtSvc, true)
+		mUpdated, _ := m.Update(tea.WindowSizeMsg{Width: cols, Height: rows})
+		mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
+		// Move cursor down to highlight the architecture diagram
+		mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+		m = mUpdated.(*tui.Model)
 
-		// Render PNG directly using native macOS /usr/bin/sips
-		tmpSVG := filepath.Join(tmpDir, s.name+".svg")
-		if err := os.WriteFile(tmpSVG, []byte(svg), 0o644); err != nil {
-			fmt.Printf("Failed to write SVG for %s: %v\n", s.name, err)
-			continue
-		}
-
-		cmd := exec.Command("/usr/bin/sips", "-s", "format", "png", tmpSVG, "--out", pngPath)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			fmt.Printf("Error rendering %s.png via sips: %v (output: %s)\n", s.name, err, string(out))
-			continue
-		}
-
-		fmt.Printf("✓ Rendered %s.png\n", s.name)
+		view := m.View()
+		saveScreen(view, cols, rows, "telepilot — Multimodal Media Vault (Voice Transcripts, Diagrams & Specs)", "media_vault", assetsDir)
 	}
 
-	fmt.Println("\nAll PNG screenshots generated successfully in assets/!")
+	// 3. Chronological Transcript & Voice (Tab 3: Transcript)
+	{
+		m := tui.NewModel(cfg, aiEng, mtSvc, true)
+		mUpdated, _ := m.Update(tea.WindowSizeMsg{Width: cols, Height: rows})
+		mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'3'}})
+		m = mUpdated.(*tui.Model)
+
+		view := m.View()
+		saveScreen(view, cols, rows, "telepilot — Chronological Chat Timeline & Inline Voice Transcripts", "transcript_view", assetsDir)
+	}
+
+	// 4. Skills & Re-Run (Tab 4: Skills)
+	{
+		m := tui.NewModel(cfg, aiEng, mtSvc, true)
+		mUpdated, _ := m.Update(tea.WindowSizeMsg{Width: cols, Height: rows})
+		mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'4'}})
+		m = mUpdated.(*tui.Model)
+
+		view := m.View()
+		saveScreen(view, cols, rows, "telepilot — Modular AI Skills Catalog (.agents/skills) & Re-Prompting", "skills_browser", assetsDir)
+	}
+
+	// 5. QR Code Login Modal (telepilot --qr or L)
+	{
+		m := tui.NewModel(cfg, aiEng, mtSvc, true)
+		mUpdated, _ := m.Update(tea.WindowSizeMsg{Width: cols, Height: rows})
+		m = mUpdated.(*tui.Model)
+
+		// Render actual QR code Unicode art
+		qrPath := filepath.Join(tmpDir, "qr.png")
+		qrArt, _ := mtproto.RenderQRHalfBlocks("tg://login?token=AQAAAI_DEMO_TOKEN_TELEPILOT_42x9K", qrPath)
+
+		// Trigger modal and set state
+		m.SetQRModalForCapture(
+			"[✓] Ready to scan: Open Telegram on your phone → Settings → Devices → Link Desktop Device",
+			qrArt,
+			qrPath,
+		)
+
+		view := m.View()
+		saveScreen(view, cols, rows, "telepilot — MTProto Connection Diagnostics & QR Code Login", "qr_login", assetsDir)
+	}
+
+	// 6. Global Configuration & Language Selector (Press 'C')
+	{
+		m := tui.NewModel(cfg, aiEng, mtSvc, true)
+		mUpdated, _ := m.Update(tea.WindowSizeMsg{Width: cols, Height: rows})
+		m = mUpdated.(*tui.Model)
+
+		// Set Global Config modal with Russian option highlighted
+		m.SetGlobalConfigModalForCapture(1)
+
+		view := m.View()
+		saveScreen(view, cols, rows, "telepilot — Global Configuration & Language Switcher (En / Ru)", "language_config", assetsDir)
+	}
+
+	// 7. Embedded Skill Preview & In-TUI Editing (Press 'v' or 'e' in Tab 4)
+	{
+		m := tui.NewModel(cfg, aiEng, mtSvc, true)
+		mUpdated, _ := m.Update(tea.WindowSizeMsg{Width: cols, Height: rows})
+		mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'4'}})
+		m = mUpdated.(*tui.Model)
+
+		// Set Skill Preview modal for the selected skill
+		m.SetSkillPreviewModalForCapture(0)
+
+		view := m.View()
+		saveScreen(view, cols, rows, "telepilot — In-TUI Skill Preview & Editor ($EDITOR Integration)", "skill_editor_preview", assetsDir)
+	}
+
+
+	fmt.Println("\nAll screenshots generated successfully in assets/!")
+}
+
+func saveScreen(view string, cols, rows int, title, baseName, assetsDir string) {
+	svg := RenderTerminalSVG(view, cols, rows, title)
+	svgPath := filepath.Join(assetsDir, baseName+".svg")
+
+	if err := os.WriteFile(svgPath, []byte(svg), 0o644); err != nil {
+		fmt.Printf("Failed to write %s: %v\n", svgPath, err)
+		return
+	}
+
+	fmt.Printf("✓ Created %s\n", filepath.Base(svgPath))
 }

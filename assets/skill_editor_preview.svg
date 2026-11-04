@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1075.5 762.0" width="1075.5" height="762.0">
+  <defs>
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="115%">
+      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#000000" flood-opacity="0.6"/>
+    </filter>
+  </defs>
+  <style>
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 13px; font-variant-ligatures: none; }
+  </style>
+  <rect width="100%" height="100%" fill="#0d1117"/>
+  <g transform="translate(25.0, 20.0)" filter="url(#shadow)" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace" font-size="13">
+    <!-- Window Body -->
+    <rect width="1025.5" height="712.0" rx="10" ry="10" fill="#1a1b26" stroke="#292e42" stroke-width="1"/>
+    <!-- Title Bar -->
+    <path d="M 0,10 A 10,10 0 0 1 10,0 L 1015.5,0 A 10,10 0 0 1 1025.5,10 L 1025.5,44.0 L 0,44.0 Z" fill="#16161e"/>
+    <!-- Window Controls -->
+    <circle cx="20" cy="18" r="6" fill="#f7768e"/>
+    <circle cx="38" cy="18" r="6" fill="#e0af68"/>
+    <circle cx="56" cy="18" r="6" fill="#9ece6a"/>
+    <!-- Window Title -->
+    <text x="512.8" y="22" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" fill="#7aa2f7" font-weight="600" text-anchor="middle">telepilot — In-TUI Skill Preview &amp; Editor ($EDITOR Integration)</text>
+    <text class="mono" x="24.0" y="57.5" xml:space="preserve"></text>
+    <text class="mono" x="24.0" y="75.5" xml:space="preserve"><tspan x="125.7" y="75.5" fill="#79a2f7">╔════════════════════════════════════════════════════════════════════════════════════════════════╗</tspan></text>
+    <text class="mono" x="24.0" y="93.5" xml:space="preserve"><tspan x="125.7" y="93.5" fill="#79a2f7">║</tspan><tspan x="884.2" y="93.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="111.5" xml:space="preserve"><tspan x="125.7" y="111.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="111.5" fill="#7dcfff" font-weight="bold">─Skill Preview: decisions-log [summary]─                                                    </tspan><tspan x="884.2" y="111.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="129.5" xml:space="preserve"><tspan x="125.7" y="129.5" fill="#79a2f7">║</tspan><tspan x="884.2" y="129.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="147.5" xml:space="preserve"><tspan x="125.7" y="147.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="147.5" fill="#e0af68">Name        : decisions-log  (ddb125ca461a)</tspan><tspan x="884.2" y="147.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="165.5" xml:space="preserve"><tspan x="125.7" y="165.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="165.5" fill="#e0af68">Kind        : summary</tspan><tspan x="884.2" y="165.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="183.5" xml:space="preserve"><tspan x="125.7" y="183.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="183.5" fill="#e0af68">File Path   : /Users/ey.samarin/coding/telegram-ai-client/.agents/skills/decisions-</tspan><tspan x="884.2" y="183.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="201.5" xml:space="preserve"><tspan x="125.7" y="201.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="201.5" fill="#e0af68">log/SKILL.md</tspan><tspan x="884.2" y="201.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="219.5" xml:space="preserve"><tspan x="125.7" y="219.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="219.5" fill="#e0af68">Description : Strict log of decisions, owners, and evidence only</tspan><tspan x="884.2" y="219.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="237.5" xml:space="preserve"><tspan x="125.7" y="237.5" fill="#79a2f7">║</tspan><tspan x="884.2" y="237.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="255.5" xml:space="preserve"><tspan x="125.7" y="255.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="255.5" fill="#79a2f7" font-weight="bold">Prompt Instructions (&lt;skill&gt;):</tspan><tspan x="884.2" y="255.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="273.5" xml:space="preserve"><tspan x="125.7" y="273.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="273.5" fill="#3b4161">────────────────────────────────────────────────────────────────────────────────────────────</tspan><tspan x="884.2" y="273.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="291.5" xml:space="preserve"><tspan x="125.7" y="291.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="291.5" fill="#c0caf5">Extract a decision log. Only include what was actually agreed; never speculate.</tspan><tspan x="884.2" y="291.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="309.5" xml:space="preserve"><tspan x="125.7" y="309.5" fill="#79a2f7">║</tspan><tspan x="884.2" y="309.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="327.5" xml:space="preserve"><tspan x="125.7" y="327.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="327.5" fill="#c0caf5">- executive_summary: one sentence on how many decisions were made and the main area they</tspan><tspan x="884.2" y="327.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="345.5" xml:space="preserve"><tspan x="125.7" y="345.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="345.5" fill="#c0caf5">affect.</tspan><tspan x="884.2" y="345.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="363.5" xml:space="preserve"><tspan x="125.7" y="363.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="363.5" fill="#c0caf5">- key_decisions: numbered list: &#34;N. Decision — owner — date — evidence (#message_id or file</tspan><tspan x="884.2" y="363.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="381.5" xml:space="preserve"><tspan x="125.7" y="381.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="381.5" fill="#c0caf5">name)&#34;.</tspan><tspan x="884.2" y="381.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="399.5" xml:space="preserve"><tspan x="125.7" y="399.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="399.5" fill="#c0caf5">- voice_media_insights: bullet list (&#34;• &#34;) of the voice notes / files where a decision was</tspan><tspan x="884.2" y="399.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="417.5" xml:space="preserve"><tspan x="125.7" y="417.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="417.5" fill="#c0caf5">made or justified.</tspan><tspan x="884.2" y="417.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="435.5" xml:space="preserve"><tspan x="125.7" y="435.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="435.5" fill="#c0caf5">- action_items: checklist (&#34;[ ] owner: task (deadline)&#34;) that follows directly from the</tspan><tspan x="884.2" y="435.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="453.5" xml:space="preserve"><tspan x="125.7" y="453.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="453.5" fill="#c0caf5">decisions.</tspan><tspan x="884.2" y="453.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="471.5" xml:space="preserve"><tspan x="125.7" y="471.5" fill="#79a2f7">║</tspan><tspan x="884.2" y="471.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="489.5" xml:space="preserve"><tspan x="125.7" y="489.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="489.5" fill="#c0caf5">If nothing was decided, say so explicitly in key_decisions. Write in the dominant language</tspan><tspan x="884.2" y="489.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="507.5" xml:space="preserve"><tspan x="125.7" y="507.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="507.5" fill="#c0caf5">of the chat.</tspan><tspan x="884.2" y="507.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="525.5" xml:space="preserve"><tspan x="125.7" y="525.5" fill="#79a2f7">║</tspan><tspan x="884.2" y="525.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="543.5" xml:space="preserve"><tspan x="125.7" y="543.5" fill="#79a2f7">║</tspan><tspan x="884.2" y="543.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="561.5" xml:space="preserve"><tspan x="125.7" y="561.5" fill="#79a2f7">║</tspan><tspan x="884.2" y="561.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="579.5" xml:space="preserve"><tspan x="125.7" y="579.5" fill="#79a2f7">║</tspan><tspan x="884.2" y="579.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="597.5" xml:space="preserve"><tspan x="125.7" y="597.5" fill="#79a2f7">║</tspan><tspan x="884.2" y="597.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="615.5" xml:space="preserve"><tspan x="125.7" y="615.5" fill="#79a2f7">║</tspan><tspan x="884.2" y="615.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="633.5" xml:space="preserve"><tspan x="125.7" y="633.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="633.5" fill="#565f89">Esc / q / v: Close  │  e: Open in $EDITOR  │  j / k: Scroll [1/22]</tspan><tspan x="884.2" y="633.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="651.5" xml:space="preserve"><tspan x="125.7" y="651.5" fill="#79a2f7">║</tspan><tspan x="884.2" y="651.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="669.5" xml:space="preserve"><tspan x="125.7" y="669.5" fill="#79a2f7">╚════════════════════════════════════════════════════════════════════════════════════════════════╝</tspan></text>
+    <text class="mono" x="24.0" y="687.5" xml:space="preserve"></text>
+  </g>
+</svg>

@@ -20,7 +20,7 @@
 
 <p align="center">
   <a href="#key-features">
-    <img src="assets/demo_dashboard.png" alt="TelePilot Tokyo-Night Terminal UI Dashboard" width="100%" />
+    <img src="assets/demo_dashboard.svg" alt="TelePilot Tokyo-Night Terminal UI Dashboard" width="100%" />
   </a>
 </p>
 
@@ -42,7 +42,7 @@ Inspect every file downloaded during a chat period—voice recordings, whiteboar
 - **Finder Reveal (`o`)**: One keypress opens the period's folder in macOS Finder.
 
 <p align="center">
-  <img src="assets/media_vault.png" alt="TelePilot Multimodal Media Vault" width="100%" />
+  <img src="assets/media_vault.svg" alt="TelePilot Multimodal Media Vault" width="100%" />
 </p>
 
 ---
@@ -53,7 +53,7 @@ Full chronological timeline of conversation messages with inline speech recognit
 - Media items, senders, deep links (`https://t.me/c/...`), and reply references are highlighted.
 
 <p align="center">
-  <img src="assets/transcript_view.png" alt="TelePilot Chronological Transcript & Inline Voice Notes" width="100%" />
+  <img src="assets/transcript_view.svg" alt="TelePilot Chronological Transcript & Inline Voice Notes" width="100%" />
 </p>
 
 ---
@@ -75,11 +75,11 @@ Extensible skill system stored in `.agents/skills/`:
   - Press **`r`** to re-run AI inference instantly without re-downloading media.
 
 <p align="center">
-  <img src="assets/skills_browser.png" alt="TelePilot Modular AI Skills Browser" width="100%" />
+  <img src="assets/skills_browser.svg" alt="TelePilot Modular AI Skills Browser" width="100%" />
 </p>
 
 <p align="center">
-  <img src="assets/skill_editor_preview.png" alt="TelePilot In-TUI Skill Preview and Editor" width="100%" />
+  <img src="assets/skill_editor_preview.svg" alt="TelePilot In-TUI Skill Preview and Editor" width="100%" />
 </p>
 
 ---
@@ -92,7 +92,7 @@ TelePilot features first-class internationalization with instant switching betwe
 - Real-time diagnostic overview of active AI models, skills folder, exports path, and MTProto server datacenter.
 
 <p align="center">
-  <img src="assets/language_config.png" alt="TelePilot Global Configuration & Language Switcher" width="100%" />
+  <img src="assets/language_config.svg" alt="TelePilot Global Configuration & Language Switcher" width="100%" />
 </p>
 
 ---
@@ -105,7 +105,7 @@ No complicated auth flows—sign in in seconds with your phone camera:
 - Works alongside your existing Telegram macOS desktop app without terminating existing sessions.
 
 <p align="center">
-  <img src="assets/qr_login.png" alt="TelePilot MTProto QR Code Login Modal" width="100%" />
+  <img src="assets/qr_login.svg" alt="TelePilot MTProto QR Code Login Modal" width="100%" />
 </p>
 
 ---
