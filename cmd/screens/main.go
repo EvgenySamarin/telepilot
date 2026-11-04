@@ -27,14 +27,19 @@ func hexColor(c ansi.Color, defaultHex string) string {
 		return defaultHex
 	}
 	r, g, b, _ := c.RGBA()
-	return fmt.Sprintf("#%02x%02x%02x", r>>8, g>>8, b>>8)
+	r8, g8, b8 := r>>8, g>>8, b>>8
+	// Boost very dark muted text for high readability and contrast in screenshots
+	if r8 < 95 && g8 < 105 && b8 < 145 && r8 > 30 {
+		return "#7aa2f7" // Tokyo Night readable accent blue
+	}
+	return fmt.Sprintf("#%02x%02x%02x", r8, g8, b8)
 }
 
 func RenderTerminalSVG(viewStr string, widthCols, heightRows int, title string) string {
 	buf := cellbuf.NewBuffer(widthCols, heightRows)
 	cellbuf.SetContent(buf, viewStr)
 
-	charW := 7.82
+	charW := 8.0
 	charH := 18.0
 	padX := 24.0
 	padTop := 44.0 // title bar height
@@ -110,56 +115,69 @@ func RenderTerminalSVG(viewStr string, widthCols, heightRows int, title string) 
 		flushBg(len(line))
 	}
 
-	// 2. Render text spans line by line
+	// 2. Render text spans line by line with explicit column alignment and lengthAdjust
 	for y := 0; y < heightRows; y++ {
 		line := buf.Line(y)
 		textY := padTop + float64(y)*charH + 13.5 // baseline
-		sb.WriteString(fmt.Sprintf(`    <text class="mono" x="%.1f" y="%.1f" xml:space="preserve">`, padX, textY))
+		sb.WriteString(fmt.Sprintf(`    <text class="mono" y="%.1f" xml:space="preserve">`, textY))
 
 		type runSpan struct {
-			text string
-			fg   string
-			bold bool
+			startCol int
+			numCols  int
+			text     string
+			fg       string
+			bold     bool
 		}
 		var runs []runSpan
-		var currentRun runSpan
+		var curRun runSpan
 
 		for x := 0; x < widthCols && x < len(line); x++ {
 			c := line[x]
 			r := ' '
-			fg := "#a9b1d6"
+			fg := "#c0caf5" // default high-contrast Tokyo Night text
 			bold := false
+			w := 1
 			if c != nil {
 				if c.Rune != 0 {
 					r = c.Rune
 				}
+				if c.Width > 0 {
+					w = c.Width
+				}
 				if c.Style.Fg != nil {
-					fg = hexColor(c.Style.Fg, "#a9b1d6")
+					fg = hexColor(c.Style.Fg, "#c0caf5")
 				}
 				if c.Style.Attrs&cellbuf.BoldAttr != 0 {
 					bold = true
 				}
 			}
 
-			if currentRun.text == "" {
-				currentRun = runSpan{text: string(r), fg: fg, bold: bold}
-			} else if currentRun.fg == fg && currentRun.bold == bold {
-				currentRun.text += string(r)
+			if curRun.text == "" {
+				curRun = runSpan{startCol: x, numCols: w, text: string(r), fg: fg, bold: bold}
+			} else if curRun.fg == fg && curRun.bold == bold && (curRun.startCol+curRun.numCols == x) {
+				curRun.text += string(r)
+				curRun.numCols += w
 			} else {
-				runs = append(runs, currentRun)
-				currentRun = runSpan{text: string(r), fg: fg, bold: bold}
+				runs = append(runs, curRun)
+				curRun = runSpan{startCol: x, numCols: w, text: string(r), fg: fg, bold: bold}
 			}
 		}
-		if currentRun.text != "" {
-			runs = append(runs, currentRun)
+		if curRun.text != "" {
+			runs = append(runs, curRun)
 		}
 
 		for _, r := range runs {
+			if strings.TrimSpace(r.text) == "" {
+				continue // spaces do not need glyphs; background rects handle highlights
+			}
 			boldAttr := ""
 			if r.bold {
 				boldAttr = ` font-weight="bold"`
 			}
-			sb.WriteString(fmt.Sprintf(`<tspan fill="%s"%s>%s</tspan>`, r.fg, boldAttr, html.EscapeString(r.text)))
+			xCoord := padX + float64(r.startCol)*charW
+			spanW := float64(r.numCols) * charW
+			sb.WriteString(fmt.Sprintf(`<tspan x="%.1f" textLength="%.1f" lengthAdjust="spacing" fill="%s"%s>%s</tspan>`,
+				xCoord, spanW, r.fg, boldAttr, html.EscapeString(r.text)))
 		}
 		sb.WriteString("</text>\n")
 	}
@@ -305,7 +323,6 @@ func main() {
 		view := m.View()
 		saveScreen(view, cols, rows, "telepilot — In-TUI Skill Preview & Editor ($EDITOR Integration)", "skill_editor_preview", assetsDir)
 	}
-
 
 	fmt.Println("\nAll screenshots generated successfully in assets/!")
 }

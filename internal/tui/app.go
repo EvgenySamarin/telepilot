@@ -2035,7 +2035,7 @@ func (m *Model) renderTranscriptTab(rec *storage.PeriodSummaryRecord, innerW int
 			aiCap := formatAICaptureText(msg.MediaAnalysis, m.cfg.Language)
 			lines = append(lines, fmt.Sprintf("[%s - %s]: %s", mTag, msg.MediaFile, aiCap))
 		}
-		out = append(out, renderInteriorCard(hdr, strings.Join(lines, "\n"), cardW, colBorder)...)
+		out = append(out, renderInteriorCard(hdr, strings.Join(lines, "\n"), cardW, colCyan)...)
 		out = append(out, "")
 	}
 	return out
@@ -2218,7 +2218,7 @@ func renderInteriorCard(title string, body string, cardWidth int, titleCol lipgl
 	wrappedLines := wrapTextBlock(body, innerTextW)
 	var paddedLines []string
 	for _, l := range wrappedLines {
-		paddedLines = append(paddedLines, padOrTruncate(l, innerTextW))
+		paddedLines = append(paddedLines, lipgloss.NewStyle().Foreground(colText).Render(padOrTruncate(l, innerTextW)))
 	}
 
 	box := lipgloss.NewStyle().
@@ -2810,12 +2810,12 @@ func (m *Model) renderGlobalConfigModal() string {
 
 	if m.cfgLangIndex == 0 {
 		enPrefix = "▸ "
-		enStyle = enStyle.Background(colGreen).Foreground(colBg).Bold(true)
-		ruStyle = ruStyle.Background(colHighlight).Foreground(colMuted)
+		enStyle = enStyle.Background(colHighlight).Foreground(colGreen).Bold(true)
+		ruStyle = ruStyle.Background(colPanelBg).Foreground(colMuted)
 	} else {
 		ruPrefix = "▸ "
-		enStyle = enStyle.Background(colHighlight).Foreground(colMuted)
-		ruStyle = ruStyle.Background(colGreen).Foreground(colBg).Bold(true)
+		enStyle = enStyle.Background(colPanelBg).Foreground(colMuted)
+		ruStyle = ruStyle.Background(colHighlight).Foreground(colGreen).Bold(true)
 	}
 
 	btnEn := enStyle.Render(enPrefix + "[1] En — English (Default)")
