@@ -3060,3 +3060,11 @@ func minInt(a, b int) int {
 	return b
 }
 
+// SetQRModalForCapture sets the model state to show the QR modal for captures and previews.
+func (m *Model) SetQRModalForCapture(status, qrArt, qrPNGPath string) {
+	m.activeModal = modalLoginQR
+	m.qrStatus = status
+	m.qrArt = qrArt
+	m.qrPNGPath = qrPNGPath
+}
+
