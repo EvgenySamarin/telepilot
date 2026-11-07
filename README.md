@@ -9,11 +9,11 @@
 </p>
 
 <p align="center">
-  A lightweight, keyboard-driven <strong>Telegram AI Client & Summarizer</strong> for macOS built with <strong>pure Go (<a href="https://github.com/gotd/td">gotd/td</a> MTProto)</strong>, <strong><a href="https://github.com/charmbracelet/bubbletea">Charm Bubble Tea</a> & <a href="https://github.com/charmbracelet/lipgloss">Lipgloss</a></strong>, and <strong>Antigravity CLI (<code>agy</code>) / Google Gemini Multimodal AI</strong>.
+  A lightweight, keyboard-driven <strong>Telegram AI Client & Skill Runner</strong> for macOS built with <strong>pure Go (<a href="https://github.com/gotd/td">gotd/td</a> MTProto)</strong>, <strong><a href="https://github.com/charmbracelet/bubbletea">Charm Bubble Tea</a> & <a href="https://github.com/charmbracelet/lipgloss">Lipgloss</a></strong>, and <strong>Antigravity CLI (<code>agy</code>) / Google Gemini Multimodal AI</strong>.
 </p>
 
 <p align="center">
-  Works <strong>alongside your official Telegram macOS app</strong> (using Telegram's native multi-session capability) to give you a dedicated <strong>Tokyo-Night Terminal UI</strong> with real-time two-way messaging, per-chat AI auto-reply & single-shot instructions, multimodal voice/media analysis, and period archives.
+  Works <strong>alongside your official Telegram macOS app</strong> (using Telegram's native multi-session capability) to give you a dedicated <strong>Tokyo-Night Terminal UI</strong> with real-time two-way messaging, per-chat AI auto-reply & single-shot instructions, multimodal voice/media analysis, and flexible AI skill execution.
 </p>
 
 ---
@@ -41,18 +41,25 @@
 ### 2. Per-Chat AI Instructions, Single-Shot Runner & Skills (`[2:AI & Skills]`)
 Configure AI behavior independently for each Telegram chat (persisted in `data/chat_ai_config.json`):
 - **Two-Level Box Navigation**:
-  - **Level 1 (Box Selection)**: Use **`j` / `k`** to move between the 5 cards (`AI Actions & Shortcuts`, `Per-Chat AI Instructions`, `Common AI Engine Configuration`, `Skills Library`, and `Selected Chat Latest Archive & Run Settings`) without losing cursor focus.
+  - **Level 1 (Box Selection)**: Use **`j` / `k`** to move between the 5 cards (`AI Actions & Shortcuts`, `Per-Chat AI Instructions`, `Common AI Engine Configuration`, `Skills Library`, and `Selected Chat Latest AI Skill Output`) without losing cursor focus.
   - **Level 2 (Inside a Box)**: Press **`Enter`** to drill into the highlighted box (border turns green `◆`) to toggle per-chat AI settings or browse and assign skills; press **`Esc`** (or `Backspace`) to step back out to box selection.
 - **Per-Chat AI Message Control**:
   - **Colorized Status Badges**: Instant visual clarity with green **`[ON]` / `[ACTIVE]` / `[CONNECTED]`** and red **`[OFF]` / `[NOT CONFIGURED]`** badges across structured indented option lists.
   - **Auto-Reply (`a`)**: Automatically respond to new incoming messages in the selected chat using AI.
   - **Send Mode (`s`)**: Toggle between **`Draft to Compose Box (Enter to confirm)`** (safe review before sending) and **`Auto-Send Immediately`** (hands-free autonomous replies).
 - **Standalone Single-Shot AI Instructions (`m`)**:
-  - Give the AI ad-hoc instructions for the current chat (e.g., *"send 3 different messages starting with AI prefix every 15 seconds"* or *"reply politely that I'm in a meeting"*), completely separate from period summarization.
+  - Give the AI ad-hoc instructions for the current chat (e.g., *"send 3 different messages starting with AI prefix every 15 seconds"* or *"reply politely that I'm in a meeting"*), completely separate from skill execution.
   - **`Enter`** cancels any previously running instruction for that chat and starts the new single-shot immediately; **`Ctrl+A`** appends/queues onto the currently running instruction; **`Ctrl+X`** stops and clears the active runner.
 - **Modular Skills Library (`.agents/skills/`)**:
   - Pre-installed skills (`period-summary`, `decisions-log`, `standup-digest`, `voice-transcribe`, `document-summarize`, `image-describe`, `video-describe`).
-  - Press **`v`** to preview a skill's `SKILL.md` in-TUI, **`e`** to edit it in `$EDITOR`, or **`n`** to scaffold a new skill template.
+  - **macOS Finder & Editor Integration**:
+    - Press **`v`** to preview a skill's `SKILL.md` in-TUI.
+    - Press **`e`** to edit `SKILL.md` in terminal `$EDITOR` (e.g. `nano`, `vim`).
+    - Press **`O`** to open the skill in your macOS default GUI editor.
+    - Press **`o`** to reveal the skill or `.agents/skills/` folder directly in macOS Finder.
+    - Press **`I`** to open the native macOS Finder file picker to import external skill files or folders.
+    - Press **`n`** to scaffold a new skill or paste/drag an existing path.
+    - **Live Auto-Reload**: Any skills added, edited, or deleted in Finder or an external editor are detected and reloaded automatically in real time.
 
 <p align="center">
   <img src="assets/skills_browser.svg" alt="TelePilot Per-Chat AI Instructions & 2-Level Box Navigation" width="100%" />
@@ -64,19 +71,22 @@ Configure AI behavior independently for each Telegram chat (persisted in `data/c
 
 ---
 
-### 3. Unified Period Archive: Summary, Media Vault & Transcript (`[3:Period Archive]`)
-All historical period exports (`exports/<chat>/<YYYY-MM-DD_to_YYYY-MM-DD>/`) are consolidated into a single scrollable view in Tab 3:
-- **Executive Summary Cards**: Structured cards for **Metadata**, **Active Skill**, **Executive Summary**, **Key Decisions & Highlights**, **Voice/Media Accounting**, and **Action Items**.
-- **Multimodal Media Vault**: Inspect downloaded voice notes, photos, diagrams, and PDFs with automated AI transcription and vision descriptions. Press **`v`** for native macOS QuickLook (`qlmanage -p` / `afplay`) or **`o`** to reveal the export folder in macOS Finder.
-- **Chronological Transcript**: Grouped message history with inline voice transcriptions (`🎙️ Voice Transcript`) and deep links.
-- **Period Window Selector (`p`)**: Press **`p`** in Tab 3 to switch the summarization time window (`1d`, `3d`, `7d`, `2w`, `1m`, `3m`, or custom `YYYY-MM-DD..YYYY-MM-DD`).
+### 3. AI Skill Output & Execution Reports (`[3:AI Output]`)
+Run any skill on the selected chat's messages and view its natural output in Tab 3:
+- **Free-Form AI Output**: Unconstrained, natural output formatted by your active skill (e.g. `standup-digest`, `decisions-log`, `document-summarize`, `period-summary`, or any custom skill in `.agents/skills/`) without forcing rigid schemas.
+- **Skill & Execution Metadata**: Clear breakdown of the active skill, skill hash, model used, timestamp, message count, and output file path (`data/outputs/<chat>_output.md`).
+- **One-Key Skill Execution (`r`)**: Press **`r`** anywhere in Tab 2 or Tab 3 to run the active skill directly on the selected chat. Upon completion, TelePilot switches directly to Tab 3 to display the result.
+- **Native macOS QuickLook (`v`) & Finder (`o`)**:
+  - Press **`v`** to QuickLook the generated Markdown report via `qlmanage -p`.
+  - Press **`o`** to reveal the output Markdown file in macOS Finder via `open -R`.
+- **Persistent Storage**: Latest skill results are saved per-chat in `data/chat_skill_outputs.json` and persisted as Markdown files in `data/outputs/`.
 
 <p align="center">
-  <img src="assets/transcript_view.svg" alt="TelePilot Unified Period Archive — Executive Summary & Transcript" width="100%" />
+  <img src="assets/skill_output.svg" alt="TelePilot AI Skill Output & Execution Report" width="100%" />
 </p>
 
 <p align="center">
-  <img src="assets/media_vault.svg" alt="TelePilot Multimodal Media Vault & Timeline in Tab 3" width="100%" />
+  <img src="assets/media_vault.svg" alt="TelePilot Detailed Skill Output & Natural Language Report" width="100%" />
 </p>
 
 ---
@@ -105,21 +115,24 @@ Sign in with your phone camera in seconds:
 
 ---
 
-## 📁 Period-Based Export & Per-Chat Config Architecture
+## 📁 Data & Skills Architecture
 
-TelePilot stores per-chat AI configurations in `data/chat_ai_config.json` and organizes period summaries cleanly on disk:
+TelePilot stores per-chat configurations and AI skill outputs cleanly in `data/` and modular skills in `.agents/skills/`:
 
 ```text
 data/
-└── chat_ai_config.json  # Per-chat AI status, active skill, auto-reply, send mode & single-shot state
+├── chat_ai_config.json      # Per-chat AI status, active skill, auto-reply, send mode & single-shot state
+├── chat_skill_outputs.json  # Cached AI skill outputs & execution metadata per chat
+└── outputs/                 # Exported Markdown output files (<chat_slug>_output.md) for QuickLook (v) & Finder (o)
 
-exports/<chat_slug>/<YYYY-MM-DD>_to_<YYYY-MM-DD>/
-├── images/              # Downloaded photos, diagrams & whiteboard screenshots
-├── documents/           # Downloaded PDFs, CSV benchmarks, technical specs
-├── voice/               # Downloaded .ogg voice messages + .txt transcripts
-├── transcript.md        # Chronological timeline with inline voice transcriptions
-├── summary.md           # Markdown executive report
-└── metadata.json        # Structured JSON cache for instant re-prompting
+.agents/skills/              # Modular AI skills (SKILL.md) loaded dynamically with live reload
+├── decisions-log/
+├── document-summarize/
+├── image-describe/
+├── period-summary/
+├── standup-digest/
+├── video-describe/
+└── voice-transcribe/
 ```
 
 ---
@@ -157,38 +170,28 @@ telepilot --qr
 
 | Key | Context | Action |
 | :--- | :--- | :--- |
-| **`1` – `4`** | Global | Switch main tab (`1:Live Chat`, `2:AI & Skills`, `3:Period Archive`, `4:Trace`) |
+| **`1` – `4`** | Global | Switch main tab (`1:Live Chat`, `2:AI & Skills`, `3:AI Output`, `4:Trace`) |
 | **`Tab` / `h` / `l`** | Global | Switch focus between Chats sidebar and Main panel |
 | **`j` / `k`**, **`g` / `G`** | Global | Vim-style vertical navigation (single line, top, bottom) |
+| **`\` / `/`** | Chats Sidebar | Vim-style search through chats by title or username (`Enter`: Open, `Esc`: Clear) |
 | **`Enter` / `Space`** | Sidebar | Open and select the highlighted chat `(●)` |
 | **`i` / `Enter`** | Tab 1 (`Live Chat`) | Focus the compose box to write and send a message (`Esc` to cancel) |
 | **`a`** | Tab 1 (`Live Chat`) | Generate an on-demand AI reply for the active chat |
-| **`m`** | Tab 1 & Tab 2 | Open **Single-Shot AI Instruction** modal (`Enter`: Replace & Run, `Ctrl+A`: Append, `Ctrl+X`: Stop) |
+| **`m`** | Tab 1, 2, 3 | Open **Single-Shot AI Instruction** modal (`Enter`: Replace & Run, `Ctrl+A`: Append, `Ctrl+X`: Stop) |
 | **`Enter` / `Esc`** | Tab 2 (`AI & Skills`) | Drill into selected box (`Enter`) / Exit back to box-level navigation (`Esc`) |
 | **`a`** | Tab 2 (`AI & Skills`) | Toggle per-chat **AI Auto-Reply** (`[ON]` / `[OFF]`) |
 | **`s`** | Tab 2 (`AI & Skills`) | Toggle per-chat **AI Send Mode** (`Draft to Compose Box` vs `Auto-Send Immediately`) |
 | **`A`** | Tab 2 (`AI & Skills`) | Trigger an immediate on-demand **AI Reply** for the selected chat |
-| **`x`** | Tab 2 (`AI & Skills`) | Disable AI for the selected chat |
-| **`v` / `e` / `n`** | Tab 2 (`Skills Library`) | Preview skill in-TUI (`v`), edit `SKILL.md` in `$EDITOR` (`e`), or create new skill (`n`) |
-| **`r`** | Tab 1, 2, 3 | Refresh live chat (Tab 1) or run/re-run AI period summarization (Tab 2 & Tab 3) |
-| **`p`** | Tab 3 (`Period Archive`) | Change summarization period window (`7d`, `2w`, `1m`, `3m`, or custom range) |
-| **`v` / `o`** | Tab 1 & Tab 3 | QuickLook preview (`v`) or reveal period archive folder in macOS Finder (`o`) |
+| **`x`** | Tab 2 (`AI & Skills`) | Disable AI instructions for the selected chat |
+| **`v` / `e`** | Tab 2 (`Skills Library`) | Preview skill in-TUI (`v`) or edit `SKILL.md` in `$EDITOR` (`e`) |
+| **`O` / `o`** | Tab 2 (`Skills Library`) | Open skill in macOS GUI editor (`O`) or reveal skill in macOS Finder (`o`) |
+| **`n` / `I`** | Tab 2 (`Skills Library`) | Create new skill / paste path (`n`) or import skill via native macOS Finder picker (`I`) |
+| **`r`** | Tab 1, 2, 3 | Refresh live chat (Tab 1) or run active AI skill on selected chat (Tab 2 & Tab 3) |
+| **`v` / `o`** | Tab 1 & Tab 3 | Play voice / QuickLook media (Tab 1) or QuickLook Markdown output (`v`) / reveal in Finder (`o`) (Tab 3) |
 | **`c`** | Global | Open **AI Engine Configuration** modal (Antigravity CLI `agy` or Gemini API) |
 | **`C`** | Global | Open **Global Configuration** modal (switch language between `En` and `Ru`) |
 | **`L`** | Global | Open **MTProto Connection Diagnostics & QR Code Login** modal |
 | **`?` / `q`** | Global | Show Help modal (`?`) / Quit (`q`) |
-
----
-
-## 🛠️ Regenerating Assets & Screenshots
-
-TelePilot includes a pure-Go SVG terminal capture utility that renders the Lipgloss Bubble Tea screens directly into vector SVGs with Tokyo-Night styling and macOS window chrome:
-
-```bash
-go run ./cmd/screens
-```
-
-Outputs are written to `assets/`.
 
 ---
 

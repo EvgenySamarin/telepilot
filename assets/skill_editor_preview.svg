@@ -51,7 +51,7 @@
     <text class="mono" x="24.0" y="579.5" xml:space="preserve"><tspan x="125.7" y="579.5" fill="#79a2f7">║</tspan><tspan x="884.2" y="579.5" fill="#79a2f7">║</tspan></text>
     <text class="mono" x="24.0" y="597.5" xml:space="preserve"><tspan x="125.7" y="597.5" fill="#79a2f7">║</tspan><tspan x="884.2" y="597.5" fill="#79a2f7">║</tspan></text>
     <text class="mono" x="24.0" y="615.5" xml:space="preserve"><tspan x="125.7" y="615.5" fill="#79a2f7">║</tspan><tspan x="884.2" y="615.5" fill="#79a2f7">║</tspan></text>
-    <text class="mono" x="24.0" y="633.5" xml:space="preserve"><tspan x="125.7" y="633.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="633.5" fill="#565f89">Esc / q / v: Close  │  e: Open in $EDITOR  │  j / k: Scroll [1/22]</tspan><tspan x="884.2" y="633.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="633.5" xml:space="preserve"><tspan x="125.7" y="633.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="633.5" fill="#565f89">Esc/q/v: Close  │  e: $EDITOR  │  O: Mac Editor  │  o: Finder  │  j/k: Scroll [1/22]</tspan><tspan x="884.2" y="633.5" fill="#79a2f7">║</tspan></text>
     <text class="mono" x="24.0" y="651.5" xml:space="preserve"><tspan x="125.7" y="651.5" fill="#79a2f7">║</tspan><tspan x="884.2" y="651.5" fill="#79a2f7">║</tspan></text>
     <text class="mono" x="24.0" y="669.5" xml:space="preserve"><tspan x="125.7" y="669.5" fill="#79a2f7">╚════════════════════════════════════════════════════════════════════════════════════════════════╝</tspan></text>
     <text class="mono" x="24.0" y="687.5" xml:space="preserve"></text>

@@ -255,7 +255,7 @@ func main() {
 		saveScreen(view, cols, rows, "telepilot — Per-Chat AI Instructions & 2-Level Box Navigation", "skills_browser", assetsDir)
 	}
 
-	// 3. Unified Period Archive (Tab 3: Summary + Media Vault + Transcript)
+	// 3. AI Skill Output (Tab 3: AI Output)
 	{
 		m := tui.NewModel(cfg, aiEng, mtSvc, true)
 		mUpdated, _ := m.Update(tea.WindowSizeMsg{Width: cols, Height: rows})
@@ -263,22 +263,23 @@ func main() {
 		m = mUpdated.(*tui.Model)
 
 		view := m.View()
-		saveScreen(view, cols, rows, "telepilot — Unified Period Archive (Executive Summary, Media Vault & Transcript)", "transcript_view", assetsDir)
+		saveScreen(view, cols, rows, "telepilot — AI Skill Output & Execution Report in Tab 3", "skill_output", assetsDir)
+		saveScreen(view, cols, rows, "telepilot — AI Skill Output & Execution Report in Tab 3", "transcript_view", assetsDir)
 	}
 
-	// 4. Unified Period Archive Scrolled to Media Vault (Tab 3)
+	// 4. AI Skill Output Scrolled (Tab 3)
 	{
 		m := tui.NewModel(cfg, aiEng, mtSvc, true)
 		mUpdated, _ := m.Update(tea.WindowSizeMsg{Width: cols, Height: rows})
 		mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'3'}})
 		mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
-		for i := 0; i < 6; i++ {
+		for i := 0; i < 4; i++ {
 			mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'J'}})
 		}
 		m = mUpdated.(*tui.Model)
 
 		view := m.View()
-		saveScreen(view, cols, rows, "telepilot — Multimodal Media Vault & Timeline in Tab 3", "media_vault", assetsDir)
+		saveScreen(view, cols, rows, "telepilot — Detailed Skill Output & Natural Language Report", "media_vault", assetsDir)
 	}
 
 	// 5. QR Code Login Modal (telepilot --qr or L)
