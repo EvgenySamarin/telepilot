@@ -12,6 +12,90 @@ import (
 	"telepilot/internal/domain/skills"
 )
 
+func (m *Model) handleChatSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	key := msg.String()
+	switch key {
+	case "esc":
+		m.chatSearching = false
+		m.chatSearchQuery = ""
+		m.chatScrollOffset = 0
+		for i := range m.chats {
+			if m.chats[i].ChatID == m.selectedChatID {
+				m.chatCursor = i
+				break
+			}
+		}
+		return m, nil
+	case "ctrl+c":
+		if m.qrCancel != nil {
+			m.qrCancel()
+		}
+		if m.liveStreamCancel != nil {
+			m.liveStreamCancel()
+		}
+		return m, tea.Quit
+	case "ctrl+u":
+		m.chatSearchQuery = ""
+		m.chatScrollOffset = 0
+		if len(m.chats) > 0 {
+			m.chatCursor = 0
+		}
+		return m, nil
+	case "up", "ctrl+p", "ctrl+k":
+		matches := m.filteredChatIndices()
+		if len(matches) > 0 {
+			pos := m.filteredChatCursorPos(matches)
+			if pos > 0 {
+				m.chatCursor = matches[pos-1]
+				m.marqueeTick = 0
+			}
+		}
+		return m, nil
+	case "down", "ctrl+n", "ctrl+j":
+		matches := m.filteredChatIndices()
+		if len(matches) > 0 {
+			pos := m.filteredChatCursorPos(matches)
+			if pos < len(matches)-1 {
+				m.chatCursor = matches[pos+1]
+				m.marqueeTick = 0
+			}
+		}
+		return m, nil
+	case "enter":
+		m.chatSearching = false
+		matches := m.filteredChatIndices()
+		if len(matches) > 0 {
+			pos := m.filteredChatCursorPos(matches)
+			m.chatCursor = matches[pos]
+			return m, m.selectChatAtIndex(m.chatCursor)
+		}
+		return m, nil
+	case "backspace":
+		if len(m.chatSearchQuery) > 0 {
+			_, sz := utf8.DecodeLastRuneInString(m.chatSearchQuery)
+			m.chatSearchQuery = m.chatSearchQuery[:len(m.chatSearchQuery)-sz]
+		}
+		matches := m.filteredChatIndices()
+		if len(matches) > 0 {
+			m.chatCursor = matches[0]
+			m.marqueeTick = 0
+		}
+		return m, nil
+	default:
+		if utf8.RuneCountInString(key) == 1 {
+			m.chatSearchQuery += key
+		} else if key == "space" || key == " " {
+			m.chatSearchQuery += " "
+		}
+		matches := m.filteredChatIndices()
+		if len(matches) > 0 {
+			m.chatCursor = matches[0]
+			m.marqueeTick = 0
+		}
+		return m, nil
+	}
+}
+
 func (m *Model) handleLiveComposeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 	switch key {
@@ -423,6 +507,18 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.tab2BoxEntered = false
 			return m, nil
 		}
+		if m.chatSearchQuery != "" {
+			m.chatSearchQuery = ""
+			m.chatScrollOffset = 0
+			return m, nil
+		}
+
+	case "\\", "/":
+		m.focus = focusChats
+		m.chatSearching = true
+		m.chatSearchQuery = ""
+		m.chatScrollOffset = 0
+		return m, nil
 
 	case "q", "ctrl+c":
 		if m.qrCancel != nil {
@@ -516,8 +612,10 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "g":
 		switch m.focus {
 		case focusChats:
-			m.chatCursor = 0
-			m.marqueeTick = 0
+			if matches := m.filteredChatIndices(); len(matches) > 0 {
+				m.chatCursor = matches[0]
+				m.marqueeTick = 0
+			}
 		case focusMain:
 			switch m.activeTab {
 			case 1:
@@ -541,8 +639,8 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "G":
 		switch m.focus {
 		case focusChats:
-			if len(m.chats) > 0 {
-				m.chatCursor = len(m.chats) - 1
+			if matches := m.filteredChatIndices(); len(matches) > 0 {
+				m.chatCursor = matches[len(matches)-1]
 				m.marqueeTick = 0
 			}
 		case focusMain:
@@ -569,8 +667,9 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+d":
 		switch m.focus {
 		case focusChats:
-			if len(m.chats) > 0 {
-				m.chatCursor = minInt(len(m.chats)-1, m.chatCursor+6)
+			if matches := m.filteredChatIndices(); len(matches) > 0 {
+				pos := m.filteredChatCursorPos(matches)
+				m.chatCursor = matches[minInt(len(matches)-1, pos+6)]
 				m.marqueeTick = 0
 			}
 		case focusMain:
@@ -584,8 +683,11 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+u":
 		switch m.focus {
 		case focusChats:
-			m.chatCursor = maxInt(0, m.chatCursor-6)
-			m.marqueeTick = 0
+			if matches := m.filteredChatIndices(); len(matches) > 0 {
+				pos := m.filteredChatCursorPos(matches)
+				m.chatCursor = matches[maxInt(0, pos-6)]
+				m.marqueeTick = 0
+			}
 		case focusMain:
 			if m.activeTab == 1 {
 				m.liveMsgCursor = maxInt(0, m.liveMsgCursor-5)
@@ -597,9 +699,12 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "k", "up":
 		switch m.focus {
 		case focusChats:
-			if m.chatCursor > 0 {
-				m.chatCursor--
-				m.marqueeTick = 0
+			if matches := m.filteredChatIndices(); len(matches) > 0 {
+				pos := m.filteredChatCursorPos(matches)
+				if pos > 0 {
+					m.chatCursor = matches[pos-1]
+					m.marqueeTick = 0
+				}
 			}
 		case focusMain:
 			switch m.activeTab {
@@ -633,9 +738,12 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "j", "down":
 		switch m.focus {
 		case focusChats:
-			if m.chatCursor < len(m.chats)-1 {
-				m.chatCursor++
-				m.marqueeTick = 0
+			if matches := m.filteredChatIndices(); len(matches) > 0 {
+				pos := m.filteredChatCursorPos(matches)
+				if pos < len(matches)-1 {
+					m.chatCursor = matches[pos+1]
+					m.marqueeTick = 0
+				}
 			}
 		case focusMain:
 			switch m.activeTab {
@@ -824,6 +932,15 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case "n":
+		if m.focus == focusChats && m.chatSearchQuery != "" {
+			if matches := m.filteredChatIndices(); len(matches) > 0 {
+				pos := m.filteredChatCursorPos(matches)
+				m.chatCursor = matches[(pos+1)%len(matches)]
+				m.marqueeTick = 0
+				return m, m.selectChatAtIndex(m.chatCursor)
+			}
+			return m, nil
+		}
 		if m.activeTab == 2 {
 			m.inputBuffer = ""
 			m.activeModal = modalNewSkill
@@ -831,6 +948,17 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if rec := m.activePeriodRecord(); rec != nil && len(rec.MediaItems) > 0 {
 				m.mediaCursor = (m.mediaCursor + 1) % len(rec.MediaItems)
 			}
+		}
+
+	case "N":
+		if m.focus == focusChats && m.chatSearchQuery != "" {
+			if matches := m.filteredChatIndices(); len(matches) > 0 {
+				pos := m.filteredChatCursorPos(matches)
+				m.chatCursor = matches[(pos-1+len(matches))%len(matches)]
+				m.marqueeTick = 0
+				return m, m.selectChatAtIndex(m.chatCursor)
+			}
+			return m, nil
 		}
 
 	case "p":

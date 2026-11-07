@@ -39,6 +39,7 @@ var messages = map[string]map[string]string{
 		"key_login":            "QR Login",
 		"key_start_parse":      "Start Parse",
 		"key_select_chat":      "Open Chat",
+		"key_search_chats":     "Search Chats",
 		"key_compose":          "Compose",
 		"key_send":             "Send",
 		"key_cancel":           "Cancel",
@@ -65,8 +66,11 @@ var messages = map[string]map[string]string{
 		"key_help":             "Help",
 
 		// Sidebar
-		"sidebar_chats_hdr":   "─Chats (Enter/Space:Open) [%d/%d]─",
-		"sidebar_periods_hdr": "─Period Folders [%d/%d]─",
+		"sidebar_chats_hdr":      "─Chats (Enter/Space:Open  \\:Search) [%d/%d]─",
+		"sidebar_search_active":  " \\ %s█ [%d/%d]",
+		"sidebar_search_filter":  " \\ %s [%d/%d] (Esc:Clear)",
+		"sidebar_search_no_match": "  No matching chats",
+		"sidebar_periods_hdr":    "─Period Folders [%d/%d]─",
 
 		// Main Panel Tabs (4 Tabs)
 		"tab_details": "─TelePilot",
@@ -206,6 +210,7 @@ var messages = map[string]map[string]string{
 		"key_login":            "Вход по QR",
 		"key_start_parse":      "Запуск анализа",
 		"key_select_chat":      "Открыть чат",
+		"key_search_chats":     "Поиск чатов",
 		"key_compose":          "Написать",
 		"key_send":             "Отправить",
 		"key_cancel":           "Отмена",
@@ -232,8 +237,11 @@ var messages = map[string]map[string]string{
 		"key_help":             "Справка",
 
 		// Sidebar
-		"sidebar_chats_hdr":   "─Чаты (Enter/Space:Открыть) [%d/%d]─",
-		"sidebar_periods_hdr": "─Папки периодов [%d/%d]─",
+		"sidebar_chats_hdr":      "─Чаты (Enter/Space:Откр.  \\:Поиск) [%d/%d]─",
+		"sidebar_search_active":  " \\ %s█ [%d/%d]",
+		"sidebar_search_filter":  " \\ %s [%d/%d] (Esc:Сброс)",
+		"sidebar_search_no_match": "  Чаты не найдены",
+		"sidebar_periods_hdr":    "─Папки периодов [%d/%d]─",
 
 		// Main Panel Tabs (4 Tabs)
 		"tab_details": "─TelePilot",

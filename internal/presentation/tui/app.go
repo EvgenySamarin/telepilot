@@ -146,6 +146,8 @@ type Model struct {
 	selectedChatID   int64
 	chatCursor       int
 	chatScrollOffset int
+	chatSearching    bool
+	chatSearchQuery  string
 
 	// Per-chat AI configurations (persisted in data/chat_ai_config.json)
 	chatAIConfigs map[int64]storage.ChatAIConfig
@@ -543,6 +545,33 @@ func (m *Model) selectChatAtIndex(idx int) tea.Cmd {
 	return m.loadChatMessagesCmd(ch)
 }
 
+func (m *Model) filteredChatIndices() []int {
+	q := strings.ToLower(strings.TrimSpace(m.chatSearchQuery))
+	indices := make([]int, 0, len(m.chats))
+	for i, c := range m.chats {
+		if q == "" {
+			indices = append(indices, i)
+			continue
+		}
+		if strings.Contains(strings.ToLower(c.Title), q) ||
+			strings.Contains(strings.ToLower(c.Username), q) ||
+			strings.Contains(strings.ToLower(c.ChatType), q) ||
+			((q == "ai" || q == "[ai]") && m.isChatAIEnabled(c.ChatID)) {
+			indices = append(indices, i)
+		}
+	}
+	return indices
+}
+
+func (m *Model) filteredChatCursorPos(matches []int) int {
+	for pos, chatIdx := range matches {
+		if chatIdx == m.chatCursor {
+			return pos
+		}
+	}
+	return 0
+}
+
 func (m *Model) reloadSkills() {
 	list, errs := skills.Load(m.cfg.SkillsDir())
 	m.skillList = list
@@ -845,6 +874,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		if m.activeModal != modalNone {
 			return m.handleModalKey(msg)
+		}
+		if m.chatSearching {
+			return m.handleChatSearchKey(msg)
 		}
 		if m.activeTab == 1 && m.chatComposing {
 			return m.handleLiveComposeKey(msg)

@@ -104,7 +104,14 @@ func (m *Model) renderBottomBar() string {
 
 	// Context-aware hotkeys tailored to the active tab + common global shortcuts
 	var keys []keyPair
-	if m.activeTab == 1 && m.chatComposing {
+	if m.chatSearching {
+		keys = []keyPair{
+			{"Enter", m.T("key_select_chat")},
+			{"Up/Down", m.T("key_vim_nav")},
+			{"Ctrl+U", "Clear"},
+			{"Esc", m.T("key_cancel")},
+		}
+	} else if m.activeTab == 1 && m.chatComposing {
 		keys = []keyPair{
 			{"Enter", m.T("key_send")},
 			{"Esc", m.T("key_cancel")},
@@ -115,6 +122,7 @@ func (m *Model) renderBottomBar() string {
 			{"1-4", m.T("key_views")},
 			{"Tab/h/l", m.T("key_focus")},
 			{"j/k", m.T("key_vim_nav")},
+			{"\\", m.T("key_search_chats")},
 		}
 		if m.focus == focusChats {
 			keys = append(keys, keyPair{"Enter/Space", m.T("key_select_chat")})
@@ -214,68 +222,98 @@ func (m *Model) renderSidebar(width, totalHeight int) string {
 	if m.focus == focusChats {
 		chatsBorderCol = colBorderFoc
 	}
+
+	matches := m.filteredChatIndices()
+	cursorPos := m.filteredChatCursorPos(matches)
+	showSearchBar := m.chatSearching || m.chatSearchQuery != ""
+
 	maxChatRows := chatsH - 3
+	if showSearchBar {
+		maxChatRows = chatsH - 4
+	}
 	if maxChatRows < 1 {
 		maxChatRows = 1
 	}
 
-	if m.chatCursor < m.chatScrollOffset {
-		m.chatScrollOffset = m.chatCursor
+	if cursorPos < m.chatScrollOffset {
+		m.chatScrollOffset = cursorPos
 	}
-	if m.chatCursor >= m.chatScrollOffset+maxChatRows {
-		m.chatScrollOffset = m.chatCursor - maxChatRows + 1
+	if cursorPos >= m.chatScrollOffset+maxChatRows {
+		m.chatScrollOffset = cursorPos - maxChatRows + 1
 	}
 	if m.chatScrollOffset < 0 {
 		m.chatScrollOffset = 0
 	}
 
-	chatHdr := m.T("sidebar_chats_hdr", minInt(m.chatCursor+1, len(m.chats)), len(m.chats))
+	displayIdx := 0
+	if len(matches) > 0 {
+		displayIdx = cursorPos + 1
+	}
+	chatHdr := m.T("sidebar_chats_hdr", displayIdx, len(matches))
 	var chatLines []string
 	chatLines = append(chatLines, lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render(padOrTruncate(chatHdr, innerW)))
 
-	for i := m.chatScrollOffset; i < len(m.chats) && len(chatLines)-1 < maxChatRows; i++ {
-		c := m.chats[i]
-		isSelected := c.ChatID == m.selectedChatID
-		isFocusedRow := m.focus == focusChats && m.chatCursor == i
-		hasAI := m.isChatAIEnabled(c.ChatID)
-
-		selMark := "( )"
-		if isSelected {
-			selMark = "(●)"
-		}
-		cursor := "  "
-		if isFocusedRow {
-			cursor = "▸ "
-		}
-		aiTag := ""
-		if hasAI {
-			aiTag = "[AI] "
-		}
-		cleanTitle := sanitizeTerminalText(c.Title)
-		rawRow := fmt.Sprintf("%s%s %s%s (%d)", cursor, selMark, aiTag, cleanTitle, c.UnreadCount)
-
-		var formatted string
-		if isFocusedRow {
-			formatted = marqueeSingleLine(rawRow, innerW, m.marqueeTick)
-			fg := colCyan
-			if hasAI {
-				fg = colPurple
-			}
-			formatted = lipgloss.NewStyle().Foreground(fg).Bold(true).Background(colHighlight).Width(innerW).Render(formatted)
+	if showSearchBar {
+		var searchLine string
+		if m.chatSearching {
+			rawSearch := m.T("sidebar_search_active", sanitizeTerminalText(m.chatSearchQuery), displayIdx, len(matches))
+			searchLine = lipgloss.NewStyle().Foreground(colYellow).Bold(true).Background(colHighlight).Width(innerW).Render(padOrTruncate(rawSearch, innerW))
 		} else {
-			formatted = padOrTruncate(rawRow, innerW)
-			switch {
-			case hasAI && isSelected:
-				formatted = lipgloss.NewStyle().Foreground(colPurple).Bold(true).Render(formatted)
-			case hasAI:
-				formatted = lipgloss.NewStyle().Foreground(colPurple).Render(formatted)
-			case isSelected:
-				formatted = lipgloss.NewStyle().Foreground(colGreen).Bold(true).Render(formatted)
-			default:
-				formatted = lipgloss.NewStyle().Foreground(colMuted).Render(formatted)
-			}
+			rawSearch := m.T("sidebar_search_filter", sanitizeTerminalText(m.chatSearchQuery), displayIdx, len(matches))
+			searchLine = lipgloss.NewStyle().Foreground(colYellow).Render(padOrTruncate(rawSearch, innerW))
 		}
-		chatLines = append(chatLines, formatted)
+		chatLines = append(chatLines, searchLine)
+	}
+
+	if len(matches) == 0 {
+		emptyRow := lipgloss.NewStyle().Foreground(colMuted).Render(padOrTruncate(m.T("sidebar_search_no_match"), innerW))
+		chatLines = append(chatLines, emptyRow)
+	} else {
+		for pos := m.chatScrollOffset; pos < len(matches) && len(chatLines) < chatsH-2; pos++ {
+			chatIdx := matches[pos]
+			c := m.chats[chatIdx]
+			isSelected := c.ChatID == m.selectedChatID
+			isFocusedRow := m.focus == focusChats && m.chatCursor == chatIdx
+			hasAI := m.isChatAIEnabled(c.ChatID)
+
+			selMark := "( )"
+			if isSelected {
+				selMark = "(●)"
+			}
+			cursor := "  "
+			if isFocusedRow {
+				cursor = "▸ "
+			}
+			aiTag := ""
+			if hasAI {
+				aiTag = "[AI] "
+			}
+			cleanTitle := sanitizeTerminalText(c.Title)
+			rawRow := fmt.Sprintf("%s%s %s%s (%d)", cursor, selMark, aiTag, cleanTitle, c.UnreadCount)
+
+			var formatted string
+			if isFocusedRow {
+				formatted = marqueeSingleLine(rawRow, innerW, m.marqueeTick)
+				fg := colCyan
+				if hasAI {
+					fg = colPurple
+				}
+				formatted = lipgloss.NewStyle().Foreground(fg).Bold(true).Background(colHighlight).Width(innerW).Render(formatted)
+			} else {
+				formatted = padOrTruncate(rawRow, innerW)
+				switch {
+				case hasAI && isSelected:
+					formatted = lipgloss.NewStyle().Foreground(colPurple).Bold(true).Render(formatted)
+				case hasAI:
+					formatted = lipgloss.NewStyle().Foreground(colPurple).Render(formatted)
+				case isSelected:
+					formatted = lipgloss.NewStyle().Foreground(colGreen).Bold(true).Render(formatted)
+				default:
+					formatted = lipgloss.NewStyle().Foreground(colMuted).Render(formatted)
+				}
+			}
+			chatLines = append(chatLines, formatted)
+		}
 	}
 	for len(chatLines) < chatsH-2 {
 		chatLines = append(chatLines, strings.Repeat(" ", innerW))

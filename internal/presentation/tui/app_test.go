@@ -562,3 +562,71 @@ func TestSingleShotReplaceVsAppendAndCancel(t *testing.T) {
 	}
 	r.mu.Unlock()
 }
+
+func TestChatsWindowVimSearchBackslash(t *testing.T) {
+	m := newTestModel(t, "en")
+	if len(m.chats) < 2 {
+		t.Fatalf("expected at least 2 demo chats, got %d", len(m.chats))
+	}
+
+	targetChat := m.chats[1]
+	// Pick a unique substring from the second chat's title
+	words := strings.Fields(targetChat.Title)
+	query := strings.ToLower(words[0])
+
+	// 1. Start in focusMain and press '\' (backslash) -> should focus Chats window and enter chatSearching mode
+	m.focus = focusMain
+	mUpdated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'\\'}})
+	m = mUpdated.(*Model)
+	if !m.chatSearching {
+		t.Fatalf("expected pressing '\\' to enter chatSearching mode")
+	}
+	if m.focus != focusChats {
+		t.Fatalf("expected pressing '\\' to switch focus to focusChats, got %v", m.focus)
+	}
+
+	// 2. Type query characters and verify live filtering
+	for _, r := range query {
+		mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m = mUpdated.(*Model)
+	}
+	if m.chatSearchQuery != query {
+		t.Fatalf("expected chatSearchQuery=%q, got %q", query, m.chatSearchQuery)
+	}
+	matches := m.filteredChatIndices()
+	if len(matches) == 0 {
+		t.Fatalf("expected at least 1 matching chat for query %q", query)
+	}
+
+	// Verify sidebar renders the active search prompt and never exceeds terminal height
+	viewWhileSearching := m.View()
+	if len(strings.Split(viewWhileSearching, "\n")) != m.height {
+		t.Errorf("expected View() height=%d while searching, got %d", m.height, len(strings.Split(viewWhileSearching, "\n")))
+	}
+	if !strings.Contains(viewWhileSearching, "\\ "+query) {
+		t.Errorf("expected sidebar to display search prompt '\\ %s'", query)
+	}
+
+	// 3. Press Enter to confirm search and open the matched chat
+	mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = mUpdated.(*Model)
+	if m.chatSearching {
+		t.Errorf("expected Enter to exit chatSearching input mode")
+	}
+	if m.selectedChatID != m.chats[matches[0]].ChatID {
+		t.Errorf("expected Enter in chat search to select matched chat %d, got %d", m.chats[matches[0]].ChatID, m.selectedChatID)
+	}
+	if m.chatSearchQuery != query {
+		t.Errorf("expected search filter %q to remain active until Esc", query)
+	}
+
+	// 4. Press Esc to clear the active search filter and restore all chats
+	mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = mUpdated.(*Model)
+	if m.chatSearchQuery != "" {
+		t.Errorf("expected Esc to clear chatSearchQuery, got %q", m.chatSearchQuery)
+	}
+	if len(m.filteredChatIndices()) != len(m.chats) {
+		t.Errorf("expected all %d chats to be visible after clearing search", len(m.chats))
+	}
+}
