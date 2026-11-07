@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -121,4 +122,155 @@ func formatMediaAccounting(items []storage.MediaItemRecord, lang string) string 
 	}
 	return strings.Join(lines, "\n")
 }
+
+// GenerateChatReply generates a conversational reply for a live Telegram chat using recent messages,
+// the chat's assigned skill, and per-chat custom AI instructions.
+func (e *Engine) GenerateChatReply(ctx context.Context, chatTitle string, recent []storage.LiveMessage, skillName string, customNotes string) (string, error) {
+	if len(recent) > 15 {
+		recent = recent[len(recent)-15:]
+	}
+	var historyLines []string
+	for _, m := range recent {
+		sender := strings.TrimSpace(m.Sender)
+		if sender == "" {
+			sender = "User"
+		}
+		text := strings.TrimSpace(m.Text)
+		if text == "" && m.MediaType != "" {
+			text = fmt.Sprintf("[%s: %s]", strings.ToUpper(m.MediaType), m.MediaFileName)
+		}
+		if text != "" {
+			historyLines = append(historyLines, fmt.Sprintf("[%s] %s: %s", m.Timestamp, sender, text))
+		}
+	}
+
+	var skillInstructions string
+	if strings.TrimSpace(skillName) != "" {
+		sk := e.SummarySkill(skillName)
+		if strings.TrimSpace(sk.Body) != "" {
+			skillInstructions = sk.Body
+		}
+	}
+
+	langHint := "Reply naturally in the same language as the recent messages in the conversation."
+	if e.cfg.IsRussian() {
+		langHint = "Отвечай естественно на языке последних сообщений чата (по умолчанию на русском)."
+	}
+
+	var promptBuilder strings.Builder
+	promptBuilder.WriteString(fmt.Sprintf("You are participating on behalf of the user ('You') in the Telegram chat %q.\n", chatTitle))
+	promptBuilder.WriteString(langHint + "\n")
+	if strings.TrimSpace(customNotes) != "" {
+		promptBuilder.WriteString(fmt.Sprintf("\nPer-Chat AI Instructions (highest priority):\n%s\n", strings.TrimSpace(customNotes)))
+	} else if strings.TrimSpace(skillInstructions) != "" {
+		promptBuilder.WriteString(fmt.Sprintf("\nActive Skill Context (%s):\n%s\n", skillName, strings.TrimSpace(skillInstructions)))
+	}
+	promptBuilder.WriteString("\nRecent conversation history:\n")
+	promptBuilder.WriteString(strings.Join(historyLines, "\n"))
+	promptBuilder.WriteString("\n\nWrite ONLY the exact message text to send next as 'You'. Do not include quotes, sender prefixes, markdown code blocks, or explanations.")
+
+	res, err := e.callAgyCLI(ctx, promptBuilder.String(), "")
+	if err != nil {
+		return "", err
+	}
+	reply := strings.TrimSpace(res)
+	reply = strings.TrimPrefix(reply, "You:")
+	reply = strings.TrimSpace(strings.Trim(reply, "\"`"))
+	return reply, nil
+}
+
+// SingleShotAction represents one outgoing Telegram message planned by a single-shot AI instruction.
+type SingleShotAction struct {
+	Text         string `json:"text"`
+	DelaySeconds int    `json:"delay_seconds"`
+}
+
+// PlanSingleShotInstruction executes a one-off, standalone AI instruction for the selected chat
+// (unrelated to summarization or skills) and returns one or more messages (with optional delays) to send.
+func (e *Engine) PlanSingleShotInstruction(ctx context.Context, chatTitle string, recent []storage.LiveMessage, instruction string) ([]SingleShotAction, error) {
+	if len(recent) > 15 {
+		recent = recent[len(recent)-15:]
+	}
+	var historyLines []string
+	for _, m := range recent {
+		sender := strings.TrimSpace(m.Sender)
+		if sender == "" {
+			sender = "User"
+		}
+		text := strings.TrimSpace(m.Text)
+		if text == "" && m.MediaType != "" {
+			text = fmt.Sprintf("[%s: %s]", strings.ToUpper(m.MediaType), m.MediaFileName)
+		}
+		if text != "" {
+			historyLines = append(historyLines, fmt.Sprintf("[%s] %s: %s", m.Timestamp, sender, text))
+		}
+	}
+
+	var promptBuilder strings.Builder
+	promptBuilder.WriteString(fmt.Sprintf("You are executing a standalone single-shot instruction on behalf of the user ('You') in the Telegram chat %q.\n", chatTitle))
+	promptBuilder.WriteString("This is a direct chat action and is NOT a period summarization task.\n\n")
+	if len(historyLines) > 0 {
+		promptBuilder.WriteString("Recent chat context:\n")
+		promptBuilder.WriteString(strings.Join(historyLines, "\n") + "\n\n")
+	}
+	promptBuilder.WriteString(fmt.Sprintf("User Single-Shot Instruction:\n%s\n\n", strings.TrimSpace(instruction)))
+	promptBuilder.WriteString(`Return ONLY a valid JSON array of message objects to send to the chat in order:
+[
+  {"text": "exact message text to send", "delay_seconds": 0}
+]
+Rules:
+- "text" must be the exact message string to send to Telegram (no extra commentary).
+- "delay_seconds" is how many seconds to wait BEFORE sending that specific message (use 0 for immediate, or positive seconds if the user requested timed intervals such as "every 15 seconds" or "after 15 seconds").
+- If the user asked for multiple messages (e.g. 3 messages), include one object per message in the JSON array.
+- Output ONLY the raw JSON array without markdown fences or explanations.`)
+
+	res, err := e.callAgyCLI(ctx, promptBuilder.String(), "")
+	if err != nil {
+		return nil, err
+	}
+
+	actions := parseSingleShotActions(res)
+	if len(actions) == 0 {
+		return nil, fmt.Errorf("AI returned empty message plan")
+	}
+	return actions, nil
+}
+
+func parseSingleShotActions(raw string) []SingleShotAction {
+	trimmed := strings.TrimSpace(raw)
+	if start := strings.IndexByte(trimmed, '['); start >= 0 {
+		if end := strings.LastIndexByte(trimmed, ']'); end > start {
+			jsonSlice := trimmed[start : end+1]
+			var parsed []SingleShotAction
+			if err := json.Unmarshal([]byte(jsonSlice), &parsed); err == nil {
+				var valid []SingleShotAction
+				for _, a := range parsed {
+					t := strings.TrimSpace(a.Text)
+					if t != "" {
+						if a.DelaySeconds < 0 {
+							a.DelaySeconds = 0
+						}
+						if a.DelaySeconds > 300 {
+							a.DelaySeconds = 300
+						}
+						valid = append(valid, SingleShotAction{
+							Text:         t,
+							DelaySeconds: a.DelaySeconds,
+						})
+					}
+				}
+				if len(valid) > 0 {
+					return valid
+				}
+			}
+		}
+	}
+	clean := strings.TrimSpace(strings.Trim(trimmed, "\"`"))
+	if clean == "" {
+		return nil
+	}
+	return []SingleShotAction{{Text: clean, DelaySeconds: 0}}
+}
+
+
 

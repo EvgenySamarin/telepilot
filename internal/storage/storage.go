@@ -74,6 +74,124 @@ type PeriodSummaryRecord struct {
 	Messages           []MessageRecord   `json:"messages"`
 }
 
+// ChatAIConfig stores per-chat AI skill, extra notes, auto-reply, and send mode configuration in data/chat_ai_config.json.
+// By default no chat has AI enabled unless explicitly configured in Tab 2.
+type ChatAIConfig struct {
+	ChatID               int64  `json:"chat_id"`
+	ChatTitle            string `json:"chat_title"`
+	Enabled              bool   `json:"enabled"`
+	Skill                string `json:"skill"`
+	Notes                string `json:"notes"`
+	PeriodSpec           string `json:"period_spec"`
+	AutoReply            bool   `json:"auto_reply"`              // when true, AI automatically replies to incoming messages in this chat
+	SendMode             string `json:"send_mode"`               // "draft" (confirm with Enter in compose box) or "auto_send" (send immediately)
+	LastAutoRepliedMsgID int    `json:"last_auto_replied_msg_id,omitempty"`
+	UpdatedAt            string `json:"updated_at"`
+}
+
+// LiveMessage represents a single message in Tab 1 (Live Chat).
+type LiveMessage struct {
+	MessageID     int    `json:"message_id"`
+	ChatID        int64  `json:"chat_id"`
+	Sender        string `json:"sender"`
+	IsOutgoing    bool   `json:"is_outgoing"`
+	Timestamp     string `json:"timestamp"`
+	Text          string `json:"text"`
+	MediaType     string `json:"media_type,omitempty"`      // "", "voice", "image", "document"
+	MediaFileName string `json:"media_file_name,omitempty"` // display file name
+	MediaSize     int64  `json:"media_size,omitempty"`
+	DurationSec   int    `json:"duration_sec,omitempty"`
+	CachedPath    string `json:"cached_path,omitempty"` // populated once downloaded on-demand via 'v'
+}
+
+func ChatAIConfigFilePath(dataDir string) string {
+	return filepath.Join(dataDir, "chat_ai_config.json")
+}
+
+func LoadChatAIConfigs(dataDir string) map[int64]ChatAIConfig {
+	out := make(map[int64]ChatAIConfig)
+	path := ChatAIConfigFilePath(dataDir)
+	data, err := os.ReadFile(path)
+	if err != nil || len(data) == 0 {
+		return out
+	}
+	var list []ChatAIConfig
+	if err := json.Unmarshal(data, &list); err == nil {
+		for _, item := range list {
+			if item.ChatID != 0 {
+				out[item.ChatID] = item
+			}
+		}
+		return out
+	}
+	var byID map[int64]ChatAIConfig
+	if err := json.Unmarshal(data, &byID); err == nil {
+		for k, v := range byID {
+			out[k] = v
+		}
+	}
+	return out
+}
+
+func SaveChatAIConfigs(dataDir string, cfgs map[int64]ChatAIConfig) error {
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		return err
+	}
+	var list []ChatAIConfig
+	for _, v := range cfgs {
+		if v.ChatID != 0 && v.Enabled {
+			list = append(list, v)
+		}
+	}
+	sort.Slice(list, func(i, j int) bool {
+		return list[i].ChatID < list[j].ChatID
+	})
+	bytes, err := json.MarshalIndent(list, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(ChatAIConfigFilePath(dataDir), bytes, 0o644)
+}
+
+func DiscoverChatPeriodFolders(exportsDir string, chat ChatInfo) []PeriodSummaryRecord {
+	all := DiscoverAllPeriodFolders(exportsDir)
+	chatSlug := config.Slugify(chat.Title)
+	var filtered []PeriodSummaryRecord
+	for _, rec := range all {
+		if (chat.ChatID != 0 && rec.ChatID == chat.ChatID) ||
+			(chat.Title != "" && config.Slugify(rec.ChatTitle) == chatSlug) {
+			filtered = append(filtered, rec)
+		}
+	}
+	return filtered
+}
+
+func DemoLiveMessages(chat ChatInfo) []LiveMessage {
+	switch chat.ChatID {
+	case -1001849201: // Core Backend & Infra
+		return []LiveMessage{
+			{MessageID: 395, ChatID: chat.ChatID, Sender: "Elena (@elena_arch)", Timestamp: "10:55", Text: "Morning team, we need to finalize the API v2 cutover schedule this week."},
+			{MessageID: 398, ChatID: chat.ChatID, Sender: "Alexey (@alex_lead)", Timestamp: "11:20", Text: "Voice note on v1 endpoint freeze & Redis cluster.", MediaType: "voice", MediaFileName: "voice_20261014_msg398.ogg", DurationSec: 44, MediaSize: 84200},
+			{MessageID: 402, ChatID: chat.ChatID, Sender: "Elena (@elena_arch)", Timestamp: "14:05", Text: "Updated whiteboard diagram for the Redis session store", MediaType: "image", MediaFileName: "img_20261015_msg402_auth_schema.png", MediaSize: 245120},
+			{MessageID: 418, ChatID: chat.ChatID, Sender: "Elena (@elena_arch)", Timestamp: "16:40", Text: "Final PDF spec for API v2 migration", MediaType: "document", MediaFileName: "msg418_API_v2_Migration_Spec.pdf", MediaSize: 512400},
+			{MessageID: 455, ChatID: chat.ChatID, Sender: "Dmitry (@dmitry_sre)", Timestamp: "17:15", Text: "Benchmark numbers look solid—p99 latency dropped by 38% to 340ms.", MediaType: "document", MediaFileName: "msg455_Q4_Latency_Benchmark.csv", MediaSize: 18400},
+			{MessageID: 490, ChatID: chat.ChatID, Sender: "You", IsOutgoing: true, Timestamp: "18:02", Text: "Awesome work! Let's enable Phase 1 dual-write in staging first thing tomorrow."},
+		}
+	case -1001928374: // Product Design & Specs
+		return []LiveMessage{
+			{MessageID: 205, ChatID: chat.ChatID, Sender: "Maria (@maria_ux)", Timestamp: "09:30", Text: "Shared the Tokyo-Night color contrast tokens for the terminal client."},
+			{MessageID: 210, ChatID: chat.ChatID, Sender: "Maria (@maria_ux)", Timestamp: "10:12", Text: "Design critique feedback on single-chat selection & AI badges.", MediaType: "voice", MediaFileName: "voice_20261021_msg210.ogg", DurationSec: 58, MediaSize: 96000},
+			{MessageID: 214, ChatID: chat.ChatID, Sender: "You", IsOutgoing: true, Timestamp: "11:05", Text: "Agreed, highlighting chats with active AI instructions right in the sidebar makes it super clear."},
+		}
+	default:
+		return []LiveMessage{
+			{MessageID: 101, ChatID: chat.ChatID, Sender: chat.Title, Timestamp: "11:00", Text: "Welcome to live chat view for " + chat.Title + "."},
+			{MessageID: 104, ChatID: chat.ChatID, Sender: chat.Title, Timestamp: "15:30", Text: "Architecture overview diagram attached.", MediaType: "image", MediaFileName: "img_sample_msg104.png", MediaSize: 184000},
+			{MessageID: 108, ChatID: chat.ChatID, Sender: "You", IsOutgoing: true, Timestamp: "17:15", Text: "Looks great — press 'i' or Enter to compose a message anytime."},
+		}
+	}
+}
+
 var DemoChats = []ChatInfo{
 	{ChatID: -1001849201, Title: "Core Backend & Infra", ChatType: "group", UnreadCount: 14},
 	{ChatID: -1001928374, Title: "Product Design & Specs", ChatType: "group", UnreadCount: 6},

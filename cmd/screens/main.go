@@ -210,37 +210,35 @@ func main() {
 	cols := 125
 	rows := 36
 
-	// 1. Demo Dashboard (Tab 1: Summary)
+	// 1. Demo Dashboard (Tab 1: Live Chat)
 	{
 		m := tui.NewModel(cfg, aiEng, mtSvc, true)
 		mUpdated, _ := m.Update(tea.WindowSizeMsg{Width: cols, Height: rows})
-		m = mUpdated.(*tui.Model)
-		// Select another chat so the counter is 2/5
-		mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
-		mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
-		mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeySpace}) // select 3rd chat
-		mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
-		mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+		// Enable AI for the first chat so [AI] highlight is showcased in the sidebar
+		mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
+		mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
+		mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyEnter})
+		mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}})
 		m = mUpdated.(*tui.Model)
 
 		view := m.View()
-		saveScreen(view, cols, rows, "telepilot — Tokyo-Night Terminal UI (Executive Summary)", "demo_dashboard", assetsDir)
+		saveScreen(view, cols, rows, "telepilot — Tokyo-Night Terminal UI (Live Chat & Per-Chat AI)", "demo_dashboard", assetsDir)
 	}
 
-	// 2. Media Vault (Tab 2: Media Vault)
+	// 2. Per-Chat AI & Skills (Tab 2: AI & Skills)
 	{
 		m := tui.NewModel(cfg, aiEng, mtSvc, true)
 		mUpdated, _ := m.Update(tea.WindowSizeMsg{Width: cols, Height: rows})
 		mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
-		// Move cursor down to highlight the architecture diagram
-		mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+		mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
+		mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyEnter})
 		m = mUpdated.(*tui.Model)
 
 		view := m.View()
-		saveScreen(view, cols, rows, "telepilot — Multimodal Media Vault (Voice Transcripts, Diagrams & Specs)", "media_vault", assetsDir)
+		saveScreen(view, cols, rows, "telepilot — Per-Chat AI Instructions & Modular Skills (.agents/skills)", "skills_browser", assetsDir)
 	}
 
-	// 3. Chronological Transcript & Voice (Tab 3: Transcript)
+	// 3. Unified Period Archive (Tab 3: Summary + Media Vault + Transcript)
 	{
 		m := tui.NewModel(cfg, aiEng, mtSvc, true)
 		mUpdated, _ := m.Update(tea.WindowSizeMsg{Width: cols, Height: rows})
@@ -248,18 +246,22 @@ func main() {
 		m = mUpdated.(*tui.Model)
 
 		view := m.View()
-		saveScreen(view, cols, rows, "telepilot — Chronological Chat Timeline & Inline Voice Transcripts", "transcript_view", assetsDir)
+		saveScreen(view, cols, rows, "telepilot — Unified Period Archive (Executive Summary, Media Vault & Transcript)", "transcript_view", assetsDir)
 	}
 
-	// 4. Skills & Re-Run (Tab 4: Skills)
+	// 4. Unified Period Archive Scrolled to Media Vault (Tab 3)
 	{
 		m := tui.NewModel(cfg, aiEng, mtSvc, true)
 		mUpdated, _ := m.Update(tea.WindowSizeMsg{Width: cols, Height: rows})
-		mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'4'}})
+		mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'3'}})
+		mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
+		for i := 0; i < 6; i++ {
+			mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'J'}})
+		}
 		m = mUpdated.(*tui.Model)
 
 		view := m.View()
-		saveScreen(view, cols, rows, "telepilot — Modular AI Skills Catalog (.agents/skills) & Re-Prompting", "skills_browser", assetsDir)
+		saveScreen(view, cols, rows, "telepilot — Multimodal Media Vault & Timeline in Tab 3", "media_vault", assetsDir)
 	}
 
 	// 5. QR Code Login Modal (telepilot --qr or L)
@@ -268,11 +270,9 @@ func main() {
 		mUpdated, _ := m.Update(tea.WindowSizeMsg{Width: cols, Height: rows})
 		m = mUpdated.(*tui.Model)
 
-		// Render actual QR code Unicode art
 		qrPath := filepath.Join(tmpDir, "qr.png")
 		qrArt, _ := mtproto.RenderQRHalfBlocks("tg://login?token=AQAAAI_DEMO_TOKEN_TELEPILOT_42x9K", qrPath)
 
-		// Trigger modal and set state
 		m.SetQRModalForCapture(
 			"[✓] Ready to scan: Open Telegram on your phone → Settings → Devices → Link Desktop Device",
 			qrArt,
@@ -289,21 +289,19 @@ func main() {
 		mUpdated, _ := m.Update(tea.WindowSizeMsg{Width: cols, Height: rows})
 		m = mUpdated.(*tui.Model)
 
-		// Set Global Config modal with Russian option highlighted
 		m.SetGlobalConfigModalForCapture(1)
 
 		view := m.View()
 		saveScreen(view, cols, rows, "telepilot — Global Configuration & Language Switcher (En / Ru)", "language_config", assetsDir)
 	}
 
-	// 7. Embedded Skill Preview & In-TUI Editing (Press 'v' or 'e' in Tab 4)
+	// 7. Embedded Skill Preview & In-TUI Editing (Press 'v' or 'e' in Tab 2)
 	{
 		m := tui.NewModel(cfg, aiEng, mtSvc, true)
 		mUpdated, _ := m.Update(tea.WindowSizeMsg{Width: cols, Height: rows})
-		mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'4'}})
+		mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
 		m = mUpdated.(*tui.Model)
 
-		// Set Skill Preview modal for the selected skill
 		m.SetSkillPreviewModalForCapture(0)
 
 		view := m.View()

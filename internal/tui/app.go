@@ -8,11 +8,13 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"telepilot/internal/ai"
 	"telepilot/internal/config"
@@ -43,7 +45,6 @@ type focusArea int
 
 const (
 	focusChats focusArea = iota
-	focusPeriods
 	focusMain
 )
 
@@ -65,6 +66,7 @@ const (
 
 // Bubble Tea Messages
 type tickMsg time.Time
+type liveSyncTickMsg time.Time
 
 // skillEditedMsg is sent when the external editor for a SKILL.md exits.
 type skillEditedMsg struct {
@@ -101,6 +103,47 @@ type dialogsLoadedMsg struct {
 	err   error
 }
 
+type liveMessagesLoadedMsg struct {
+	chatID   int64
+	messages []storage.LiveMessage
+	err      error
+}
+
+type liveIncomingMsg struct {
+	chatID int64
+	msg    storage.LiveMessage
+}
+
+type liveMessageSentMsg struct {
+	chatID int64
+	msg    storage.LiveMessage
+	err    error
+}
+
+type liveMediaDownloadedMsg struct {
+	chatID    int64
+	messageID int
+	mediaType string
+	filePath  string
+	err       error
+}
+
+type aiChatReplyGeneratedMsg struct {
+	chat     storage.ChatInfo
+	reply    string
+	sendMode string
+	err      error
+}
+
+type chatSingleShotRunner struct {
+	mu           sync.Mutex
+	cancel       context.CancelFunc
+	running      bool
+	currentInstr string
+	queue        []string
+	history      []string
+}
+
 type parseLogMsg string
 
 type parseDoneMsg struct {
@@ -116,15 +159,32 @@ type Model struct {
 	width  int
 	height int
 
-	focus      focusArea
-	activeTab  int // 1..5
+	focus       focusArea
+	activeTab   int // 1:Live Chat, 2:AI & Skills, 3:Period Archive, 4:Trace
 	activeModal modalKind
 
+	// Single-chat selection in full-height sidebar
 	chats            []storage.ChatInfo
-	selectedChats    map[int64]bool
+	selectedChatID   int64
 	chatCursor       int
 	chatScrollOffset int
 
+	// Per-chat AI configurations (persisted in data/chat_ai_config.json)
+	chatAIConfigs map[int64]storage.ChatAIConfig
+
+	// Per-chat single-shot AI instruction runners (supports cancel/replace vs append)
+	singleShotRunners map[int64]*chatSingleShotRunner
+
+	// Tab 1: Live Chat state
+	liveMessages     []storage.LiveMessage
+	liveMsgCursor    int
+	liveScrollOffset int
+	chatComposing    bool
+	chatInputBuffer  string
+	lastLiveSync     time.Time
+	liveStreamCancel context.CancelFunc
+
+	// Tab 3: Period Archives for the currently selected chat
 	periods            []storage.PeriodSummaryRecord
 	periodCursor       int
 	periodScrollOffset int
@@ -136,7 +196,7 @@ type Model struct {
 	statusBusy  bool
 	authUser    string
 	periodSpec  string
-	runNotes    string // extra instructions appended to the active summary skill
+	runNotes    string // extra instructions for current chat
 	jobDone     int
 	jobTotal    int
 	startTime   time.Time
@@ -145,18 +205,18 @@ type Model struct {
 	traceLogs []string
 
 	// Login / Connection Test Modal State
-	formFields  [4]string // 0: API ID, 1: API Hash, 2: Server IP:Port, 3: Gemini Key
+	formFields  [4]string // 0: API ID, 1: API Hash, 2: Server IP:Port, 3: AGY Model
 	formFocus   int
 	connTesting bool
 	connPassed  bool
 	connLines   []string
 
-	qrArt      string
-	qrURL      string
-	qrPNGPath  string
-	qrStatus   string
-	qrCancel   context.CancelFunc
-	uiEventCh  chan tea.Msg
+	qrArt     string
+	qrURL     string
+	qrPNGPath string
+	qrStatus  string
+	qrCancel  context.CancelFunc
+	uiEventCh chan tea.Msg
 
 	// Period & Prompt modal input buffers
 	inputBuffer string
@@ -165,19 +225,23 @@ type Model struct {
 	deleteBtnFocus int
 
 	// AI Engine Configuration modal state
-	aiFormFields [2]string // 0: Gemini API Key, 1: Gemini Model
+	aiFormFields [2]string // 0: AGY CLI Path, 1: AGY Model
 	aiFormFocus  int
 	aiTesting    bool
 	aiPassed     bool
 	aiStatusLine string
 
-	// Skills (Re-Prompt tab): loaded from <project>/.agents/skills
+	// Skills (Tab 2): loaded from <project>/.agents/skills
 	skillList         []skills.Skill
 	skillErrs         []error
 	skillCursor       int
 	skillScrollOffset int
-	activeSkill       string // summary skill used for parsing & re-runs
+	activeSkill       string // fallback/default summary skill
 	previewScroll     int
+	tab2BoxCursor     int       // 0..4 box index in Tab 2
+	tab2BoxEntered    bool      // true when user pressed Enter to drill into a box (e.g. Box 1 or Box 3)
+	tab2ChatOptCursor int       // 0..3 option index when inside Box 1 (Per-Chat AI Instructions)
+	tab2BoxBounds     [5][2]int // [startLine, endLine] for each of the 5 boxes in Tab 2
 
 	// Global Configuration modal state (Language selection: 0 = En, 1 = Ru)
 	cfgLangIndex int
@@ -188,19 +252,22 @@ func (m *Model) T(key string, args ...any) string {
 }
 
 func NewModel(cfg *config.AppConfig, aiEngine *ai.Engine, mtSvc *mtproto.Service, forceDemo bool) *Model {
-	var periods []storage.PeriodSummaryRecord
 	if forceDemo {
-		periods = storage.EnsureDemoPeriodFolders(cfg)
-	} else {
-		periods = storage.DiscoverAllPeriodFolders(cfg.ExportsDir)
+		_ = storage.EnsureDemoPeriodFolders(cfg)
 	}
 	chats := make([]storage.ChatInfo, len(storage.DemoChats))
 	copy(chats, storage.DemoChats)
 
-	selected := make(map[int64]bool)
+	var selChatID int64
+	var initLiveMsgs []storage.LiveMessage
+	var initPeriods []storage.PeriodSummaryRecord
 	if len(chats) > 0 {
-		selected[chats[0].ChatID] = true
+		selChatID = chats[0].ChatID
+		initLiveMsgs = storage.DemoLiveMessages(chats[0])
+		initPeriods = storage.DiscoverChatPeriodFolders(cfg.ExportsDir, chats[0])
 	}
+
+	chatAICfgs := storage.LoadChatAIConfigs(cfg.DataDir)
 
 	initLangIdx := 0
 	if cfg.IsRussian() {
@@ -231,26 +298,31 @@ func NewModel(cfg *config.AppConfig, aiEngine *ai.Engine, mtSvc *mtproto.Service
 	}
 
 	m := &Model{
-		cfg:           cfg,
-		ai:            aiEngine,
-		mtproto:       mtSvc,
-		width:         140,
-		height:        38,
-		focus:         focusChats,
-		activeTab:     1,
-		activeModal:   initModal,
-		chats:         chats,
-		selectedChats: selected,
-		periods:       periods,
-		statusText:    i18n.T(cfg.Language, "status_ready"),
-		periodSpec:    cfg.DefaultPeriod,
-		runNotes:      cfg.DefaultNotes,
-		activeSkill:   cfg.DefaultSkill,
-		cfgLangIndex:  initLangIdx,
-		jobDone:       1,
-		jobTotal:      len(chats),
-		startTime:     time.Now(),
-		uiEventCh:     make(chan tea.Msg, 64),
+		cfg:            cfg,
+		ai:             aiEngine,
+		mtproto:        mtSvc,
+		width:          140,
+		height:         38,
+		focus:          focusChats,
+		activeTab:      1,
+		activeModal:    initModal,
+		chats:          chats,
+		selectedChatID:    selChatID,
+		chatAIConfigs:     chatAICfgs,
+		singleShotRunners: make(map[int64]*chatSingleShotRunner),
+		liveMessages:      initLiveMsgs,
+		liveMsgCursor:  maxInt(0, len(initLiveMsgs)-1),
+		lastLiveSync:   time.Now(),
+		periods:        initPeriods,
+		statusText:     i18n.T(cfg.Language, "status_ready"),
+		periodSpec:     cfg.DefaultPeriod,
+		runNotes:       cfg.DefaultNotes,
+		activeSkill:    cfg.DefaultSkill,
+		cfgLangIndex:   initLangIdx,
+		jobDone:        1,
+		jobTotal:       1,
+		startTime:      time.Now(),
+		uiEventCh:      make(chan tea.Msg, 64),
 		formFields: [4]string{
 			func() string {
 				if cfg.TelegramAPIID > 0 {
@@ -272,10 +344,257 @@ func NewModel(cfg *config.AppConfig, aiEngine *ai.Engine, mtSvc *mtproto.Service
 
 	_ = skills.EnsureDefaults(cfg.SkillsDir())
 	m.reloadSkills()
+	m.syncCurrentChatAISettings()
 
 	m.addTrace(fmt.Sprintf("TelePilot Go TUI initialized (root=%s, model=%s)", cfg.ProjectRoot, cfg.ActiveModelLabel()))
 	m.addTrace(fmt.Sprintf("Configured MTProto server: %s (DC %d, api_id=%d)", serverStr, cfg.TelegramDCID, cfg.TelegramAPIID))
 	return m
+}
+
+func (m *Model) activeChat() *storage.ChatInfo {
+	for i := range m.chats {
+		if m.chats[i].ChatID == m.selectedChatID {
+			return &m.chats[i]
+		}
+	}
+	if len(m.chats) > 0 {
+		if m.chatCursor >= 0 && m.chatCursor < len(m.chats) {
+			return &m.chats[m.chatCursor]
+		}
+		return &m.chats[0]
+	}
+	return nil
+}
+
+func (m *Model) isChatAIEnabled(chatID int64) bool {
+	if m.chatAIConfigs == nil {
+		return false
+	}
+	cfg, ok := m.chatAIConfigs[chatID]
+	return ok && cfg.Enabled
+}
+
+func (m *Model) activeChatAIConfig() (storage.ChatAIConfig, bool) {
+	ch := m.activeChat()
+	if ch == nil || m.chatAIConfigs == nil {
+		return storage.ChatAIConfig{}, false
+	}
+	cfg, ok := m.chatAIConfigs[ch.ChatID]
+	if !ok || !cfg.Enabled {
+		return storage.ChatAIConfig{
+			ChatID:     ch.ChatID,
+			ChatTitle:  ch.Title,
+			Enabled:    false,
+			Skill:      config.DefaultSkillName,
+			Notes:      "",
+			PeriodSpec: m.cfg.DefaultPeriod,
+		}, false
+	}
+	if cfg.PeriodSpec == "" {
+		cfg.PeriodSpec = m.cfg.DefaultPeriod
+	}
+	if cfg.Skill == "" {
+		cfg.Skill = config.DefaultSkillName
+	}
+	if cfg.SendMode == "" {
+		cfg.SendMode = "draft"
+	}
+	return cfg, true
+}
+
+func (m *Model) syncCurrentChatAISettings() {
+	if cfg, ok := m.activeChatAIConfig(); ok {
+		m.activeSkill = cfg.Skill
+		m.runNotes = cfg.Notes
+		if cfg.PeriodSpec != "" {
+			m.periodSpec = cfg.PeriodSpec
+		}
+	} else {
+		m.activeSkill = m.cfg.DefaultSkill
+		if m.activeSkill == "" {
+			m.activeSkill = config.DefaultSkillName
+		}
+		m.runNotes = ""
+		if m.cfg.DefaultPeriod != "" {
+			m.periodSpec = m.cfg.DefaultPeriod
+		} else {
+			m.periodSpec = "1m"
+		}
+	}
+}
+
+func (m *Model) saveCurrentChatAIConfig(skillName, notes, periodSpec string, enabled bool) {
+	ch := m.activeChat()
+	if ch == nil {
+		return
+	}
+	if m.chatAIConfigs == nil {
+		m.chatAIConfigs = make(map[int64]storage.ChatAIConfig)
+	}
+	if !enabled {
+		delete(m.chatAIConfigs, ch.ChatID)
+		_ = storage.SaveChatAIConfigs(m.cfg.DataDir, m.chatAIConfigs)
+		m.syncCurrentChatAISettings()
+		return
+	}
+	if strings.TrimSpace(skillName) == "" {
+		skillName = config.DefaultSkillName
+	}
+	if strings.TrimSpace(periodSpec) == "" {
+		periodSpec = "1m"
+	}
+	prev := m.chatAIConfigs[ch.ChatID]
+	sendMode := prev.SendMode
+	if sendMode == "" {
+		sendMode = "draft"
+	}
+	cfg := storage.ChatAIConfig{
+		ChatID:               ch.ChatID,
+		ChatTitle:            ch.Title,
+		Enabled:              true,
+		Skill:                strings.TrimSpace(skillName),
+		Notes:                strings.TrimSpace(notes),
+		PeriodSpec:           strings.TrimSpace(periodSpec),
+		AutoReply:            prev.AutoReply,
+		SendMode:             sendMode,
+		LastAutoRepliedMsgID: prev.LastAutoRepliedMsgID,
+		UpdatedAt:            time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
+	}
+	m.chatAIConfigs[ch.ChatID] = cfg
+	_ = storage.SaveChatAIConfigs(m.cfg.DataDir, m.chatAIConfigs)
+	m.syncCurrentChatAISettings()
+}
+
+func (m *Model) toggleChatAutoReply() {
+	ch := m.activeChat()
+	if ch == nil {
+		return
+	}
+	if m.chatAIConfigs == nil {
+		m.chatAIConfigs = make(map[int64]storage.ChatAIConfig)
+	}
+	cur, ok := m.activeChatAIConfig()
+	if !ok {
+		cur = storage.ChatAIConfig{
+			ChatID:     ch.ChatID,
+			ChatTitle:  ch.Title,
+			Enabled:    true,
+			Skill:      m.activeSkill,
+			Notes:      m.runNotes,
+			PeriodSpec: m.periodSpec,
+			SendMode:   "draft",
+		}
+	}
+	cur.Enabled = true
+	cur.AutoReply = !cur.AutoReply
+	if cur.SendMode == "" {
+		cur.SendMode = "draft"
+	}
+	if len(m.liveMessages) > 0 {
+		cur.LastAutoRepliedMsgID = m.liveMessages[len(m.liveMessages)-1].MessageID
+	}
+	cur.UpdatedAt = time.Now().UTC().Format("2006-01-02 15:04:05 UTC")
+	m.chatAIConfigs[ch.ChatID] = cur
+	_ = storage.SaveChatAIConfigs(m.cfg.DataDir, m.chatAIConfigs)
+	m.syncCurrentChatAISettings()
+	m.addTrace(fmt.Sprintf("Chat '%s': AI Auto-Reply set to %v (SendMode=%s)", ch.Title, cur.AutoReply, cur.SendMode))
+}
+
+func (m *Model) toggleChatSendMode() {
+	ch := m.activeChat()
+	if ch == nil {
+		return
+	}
+	if m.chatAIConfigs == nil {
+		m.chatAIConfigs = make(map[int64]storage.ChatAIConfig)
+	}
+	cur, ok := m.activeChatAIConfig()
+	if !ok {
+		cur = storage.ChatAIConfig{
+			ChatID:     ch.ChatID,
+			ChatTitle:  ch.Title,
+			Enabled:    true,
+			Skill:      m.activeSkill,
+			Notes:      m.runNotes,
+			PeriodSpec: m.periodSpec,
+			SendMode:   "draft",
+		}
+	}
+	cur.Enabled = true
+	if cur.SendMode == "auto_send" {
+		cur.SendMode = "draft"
+	} else {
+		cur.SendMode = "auto_send"
+	}
+	cur.UpdatedAt = time.Now().UTC().Format("2006-01-02 15:04:05 UTC")
+	m.chatAIConfigs[ch.ChatID] = cur
+	_ = storage.SaveChatAIConfigs(m.cfg.DataDir, m.chatAIConfigs)
+	m.syncCurrentChatAISettings()
+	m.addTrace(fmt.Sprintf("Chat '%s': AI Send Mode set to '%s'", ch.Title, cur.SendMode))
+}
+
+func (m *Model) generateAIChatReplyCmd(chat storage.ChatInfo, msgs []storage.LiveMessage, sendMode string) tea.Cmd {
+	skillName := m.activeSkill
+	notes := m.runNotes
+	if cfg, ok := m.chatAIConfigs[chat.ChatID]; ok && cfg.Enabled {
+		if cfg.Skill != "" {
+			skillName = cfg.Skill
+		}
+		notes = cfg.Notes
+		if sendMode == "" {
+			sendMode = cfg.SendMode
+		}
+	}
+	if sendMode == "" {
+		sendMode = "draft"
+	}
+	m.statusText = "AI generating reply..."
+	msgsCopy := make([]storage.LiveMessage, len(msgs))
+	copy(msgsCopy, msgs)
+
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+		defer cancel()
+		reply, err := m.ai.GenerateChatReply(ctx, chat.Title, msgsCopy, skillName, notes)
+		return aiChatReplyGeneratedMsg{
+			chat:     chat,
+			reply:    reply,
+			sendMode: sendMode,
+			err:      err,
+		}
+	}
+}
+
+func (m *Model) refreshChatPeriods() {
+	ch := m.activeChat()
+	if ch == nil {
+		m.periods = nil
+		m.periodCursor = 0
+		return
+	}
+	m.periods = storage.DiscoverChatPeriodFolders(m.cfg.ExportsDir, *ch)
+	if m.periodCursor >= len(m.periods) {
+		m.periodCursor = maxInt(0, len(m.periods)-1)
+	}
+	m.mediaCursor = 0
+}
+
+func (m *Model) selectChatAtIndex(idx int) tea.Cmd {
+	if idx < 0 || idx >= len(m.chats) {
+		return nil
+	}
+	m.chatCursor = idx
+	ch := m.chats[idx]
+	m.selectedChatID = ch.ChatID
+	m.chatComposing = false
+	m.chatInputBuffer = ""
+	m.mainScroll = 0
+	m.syncCurrentChatAISettings()
+	m.refreshChatPeriods()
+	m.liveMessages = storage.DemoLiveMessages(ch)
+	m.liveMsgCursor = maxInt(0, len(m.liveMessages)-1)
+	m.addTrace(fmt.Sprintf("Selected chat '%s' (id=%d)", ch.Title, ch.ChatID))
+	return m.loadChatMessagesCmd(ch)
 }
 
 func (m *Model) reloadSkills() {
@@ -338,8 +657,10 @@ func (m *Model) addTrace(msg string) {
 func (m *Model) Init() tea.Cmd {
 	return tea.Batch(
 		tickCmd(),
+		liveSyncTickCmd(),
 		waitForUIEvent(m.uiEventCh),
 		m.checkInitialAuthCmd(),
+		m.startLiveStreamCmd(),
 	)
 }
 
@@ -349,10 +670,35 @@ func tickCmd() tea.Cmd {
 	})
 }
 
+// liveSyncTickCmd triggers the 15-second fallback sync for the currently active chat.
+func liveSyncTickCmd() tea.Cmd {
+	return tea.Tick(15*time.Second, func(t time.Time) tea.Msg {
+		return liveSyncTickMsg(t)
+	})
+}
+
 func waitForUIEvent(ch chan tea.Msg) tea.Cmd {
 	return func() tea.Msg {
 		return <-ch
 	}
+}
+
+func (m *Model) startLiveStreamCmd() tea.Cmd {
+	if m.liveStreamCancel != nil {
+		m.liveStreamCancel()
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	m.liveStreamCancel = cancel
+
+	go func() {
+		m.mtproto.StartLiveStream(ctx, func(chatID int64, msg storage.LiveMessage) {
+			select {
+			case m.uiEventCh <- liveIncomingMsg{chatID: chatID, msg: msg}:
+			default:
+			}
+		})
+	}()
+	return nil
 }
 
 func (m *Model) checkInitialAuthCmd() tea.Cmd {
@@ -371,6 +717,40 @@ func (m *Model) checkInitialAuthCmd() tea.Cmd {
 	}
 }
 
+func (m *Model) loadChatMessagesCmd(chat storage.ChatInfo) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+		defer cancel()
+		msgs, err := m.mtproto.FetchRecentMessages(ctx, chat, 50)
+		return liveMessagesLoadedMsg{chatID: chat.ChatID, messages: msgs, err: err}
+	}
+}
+
+func (m *Model) sendLiveMessageCmd(chat storage.ChatInfo, text string) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+		defer cancel()
+		sent, err := m.mtproto.SendMessage(ctx, chat, text)
+		return liveMessageSentMsg{chatID: chat.ChatID, msg: sent, err: err}
+	}
+}
+
+func (m *Model) downloadAndOpenLiveMediaCmd(chat storage.ChatInfo, msg storage.LiveMessage) tea.Cmd {
+	m.statusText = "Downloading media..."
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		path, err := m.mtproto.DownloadMessageMedia(ctx, chat, msg)
+		return liveMediaDownloadedMsg{
+			chatID:    chat.ChatID,
+			messageID: msg.MessageID,
+			mediaType: msg.MediaType,
+			filePath:  path,
+			err:       err,
+		}
+	}
+}
+
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -381,6 +761,145 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tickMsg:
 		m.marqueeTick++
 		return m, tickCmd()
+
+	case liveSyncTickMsg:
+		var cmds []tea.Cmd
+		cmds = append(cmds, liveSyncTickCmd())
+		if !m.statusBusy {
+			if ch := m.activeChat(); ch != nil {
+				cmds = append(cmds, m.loadChatMessagesCmd(*ch))
+			}
+		}
+		return m, tea.Batch(cmds...)
+
+	case liveMessagesLoadedMsg:
+		if msg.err == nil && msg.chatID == m.selectedChatID && len(msg.messages) > 0 {
+			wasAtBottom := m.liveMsgCursor >= len(m.liveMessages)-1
+			m.liveMessages = msg.messages
+			m.lastLiveSync = time.Now()
+			if wasAtBottom || m.liveMsgCursor >= len(m.liveMessages) {
+				m.liveMsgCursor = maxInt(0, len(m.liveMessages)-1)
+			}
+			// Check if Auto-Reply should trigger on a new incoming message at the end of the chat
+			last := m.liveMessages[len(m.liveMessages)-1]
+			if cfg, ok := m.chatAIConfigs[msg.chatID]; ok && cfg.Enabled && cfg.AutoReply {
+				if cfg.LastAutoRepliedMsgID == 0 {
+					cfg.LastAutoRepliedMsgID = last.MessageID
+					m.chatAIConfigs[msg.chatID] = cfg
+					_ = storage.SaveChatAIConfigs(m.cfg.DataDir, m.chatAIConfigs)
+				} else if !last.IsOutgoing && last.MessageID > cfg.LastAutoRepliedMsgID {
+					cfg.LastAutoRepliedMsgID = last.MessageID
+					m.chatAIConfigs[msg.chatID] = cfg
+					_ = storage.SaveChatAIConfigs(m.cfg.DataDir, m.chatAIConfigs)
+					if ch := m.activeChat(); ch != nil && ch.ChatID == msg.chatID {
+						m.addTrace(fmt.Sprintf("Auto-Reply triggered for incoming message #%d in '%s'", last.MessageID, ch.Title))
+						return m, m.generateAIChatReplyCmd(*ch, m.liveMessages, cfg.SendMode)
+					}
+				}
+			}
+		}
+		return m, nil
+
+	case liveIncomingMsg:
+		var autoReplyCmd tea.Cmd
+		if msg.chatID == m.selectedChatID {
+			exists := false
+			for _, existing := range m.liveMessages {
+				if existing.MessageID == msg.msg.MessageID && msg.msg.MessageID != 0 {
+					exists = true
+					break
+				}
+			}
+			if !exists {
+				wasAtBottom := m.liveMsgCursor >= len(m.liveMessages)-1
+				m.liveMessages = append(m.liveMessages, msg.msg)
+				if wasAtBottom {
+					m.liveMsgCursor = len(m.liveMessages) - 1
+				}
+				m.lastLiveSync = time.Now()
+				m.addTrace(fmt.Sprintf("Live message #%d received in active chat from %s", msg.msg.MessageID, msg.msg.Sender))
+
+				if cfg, ok := m.chatAIConfigs[msg.chatID]; ok && cfg.Enabled && cfg.AutoReply && !msg.msg.IsOutgoing && msg.msg.MessageID > cfg.LastAutoRepliedMsgID {
+					cfg.LastAutoRepliedMsgID = msg.msg.MessageID
+					m.chatAIConfigs[msg.chatID] = cfg
+					_ = storage.SaveChatAIConfigs(m.cfg.DataDir, m.chatAIConfigs)
+					if ch := m.activeChat(); ch != nil && ch.ChatID == msg.chatID {
+						m.addTrace(fmt.Sprintf("Auto-Reply triggered for live incoming message #%d in '%s'", msg.msg.MessageID, ch.Title))
+						autoReplyCmd = m.generateAIChatReplyCmd(*ch, m.liveMessages, cfg.SendMode)
+					}
+				}
+			}
+		} else {
+			for i := range m.chats {
+				if m.chats[i].ChatID == msg.chatID {
+					m.chats[i].UnreadCount++
+					break
+				}
+			}
+		}
+		if autoReplyCmd != nil {
+			return m, tea.Batch(waitForUIEvent(m.uiEventCh), autoReplyCmd)
+		}
+		return m, waitForUIEvent(m.uiEventCh)
+
+	case aiChatReplyGeneratedMsg:
+		if msg.err != nil {
+			m.statusText = "AI reply error"
+			m.addTrace(fmt.Sprintf("AI reply generation failed for '%s': %v", msg.chat.Title, msg.err))
+			return m, nil
+		}
+		reply := strings.TrimSpace(msg.reply)
+		if reply == "" {
+			m.statusText = m.T("status_ready")
+			return m, nil
+		}
+		if msg.sendMode == "auto_send" {
+			m.addTrace(fmt.Sprintf("AI Auto-Send reply to '%s': %s", msg.chat.Title, truncateSingleLine(reply, 60)))
+			return m, m.sendLiveMessageCmd(msg.chat, reply)
+		}
+		// Default "draft": put generated message into Tab 1 compose box for Enter confirmation
+		m.activeTab = 1
+		m.focus = focusMain
+		m.chatInputBuffer = reply
+		m.chatComposing = true
+		m.statusText = m.T("status_ready")
+		m.addTrace(fmt.Sprintf("AI drafted reply for '%s' into compose box (press Enter to send).", msg.chat.Title))
+		return m, nil
+
+	case liveMessageSentMsg:
+		if msg.err != nil {
+			m.statusText = "Send failed"
+			m.addTrace(fmt.Sprintf("Failed to send message: %v", msg.err))
+			return m, waitForUIEvent(m.uiEventCh)
+		}
+		if msg.chatID == m.selectedChatID {
+			m.liveMessages = append(m.liveMessages, msg.msg)
+			m.liveMsgCursor = len(m.liveMessages) - 1
+			m.lastLiveSync = time.Now()
+			m.statusText = m.T("status_ready")
+			m.addTrace(fmt.Sprintf("Sent message #%d to chat %d", msg.msg.MessageID, msg.chatID))
+		}
+		return m, waitForUIEvent(m.uiEventCh)
+
+	case liveMediaDownloadedMsg:
+		m.statusText = m.T("status_ready")
+		if msg.err != nil {
+			m.addTrace(fmt.Sprintf("Media download failed: %v", msg.err))
+			return m, nil
+		}
+		for i := range m.liveMessages {
+			if m.liveMessages[i].MessageID == msg.messageID {
+				m.liveMessages[i].CachedPath = msg.filePath
+			}
+		}
+		if msg.mediaType == "voice" {
+			_ = exec.Command("afplay", msg.filePath).Start()
+			m.addTrace("Playing live voice: " + msg.filePath)
+		} else {
+			_ = exec.Command("qlmanage", "-p", msg.filePath).Start()
+			m.addTrace("QuickLook live media: " + msg.filePath)
+		}
+		return m, nil
 
 	case connTestUpdateMsg:
 		m.connLines = msg.lines
@@ -439,17 +958,18 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusText = "Connected " + msg.user
 		m.activeModal = modalNone
 		m.addTrace("Authorized Telegram session as " + msg.user)
-		return m, tea.Batch(waitForUIEvent(m.uiEventCh), m.loadDialogsCmd())
+		return m, tea.Batch(waitForUIEvent(m.uiEventCh), m.loadDialogsCmd(), m.startLiveStreamCmd())
 
 	case dialogsLoadedMsg:
 		if msg.err == nil && len(msg.chats) > 0 {
 			m.chats = msg.chats
-			m.selectedChats = make(map[int64]bool)
-			m.selectedChats[m.chats[0].ChatID] = true
 			m.chatCursor = 0
-			m.jobTotal = len(m.chats)
+			m.selectedChatID = m.chats[0].ChatID
+			m.syncCurrentChatAISettings()
+			m.refreshChatPeriods()
 			m.statusText = "Live MTProto"
 			m.addTrace(fmt.Sprintf("Loaded %d live dialogs from Telegram.", len(m.chats)))
+			return m, m.loadChatMessagesCmd(m.chats[0])
 		}
 		return m, nil
 
@@ -462,10 +982,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusBusy = false
 		if msg.err != nil {
 			m.statusText = "Parse error"
-			m.addTrace(fmt.Sprintf("Batch parse failed: %v", msg.err))
+			m.addTrace(fmt.Sprintf("Chat period parse failed: %v", msg.err))
 		} else {
-			m.periods = storage.DiscoverAllPeriodFolders(m.cfg.ExportsDir)
-			m.periodCursor = 0
+			m.refreshChatPeriods()
 			if len(msg.records) > 0 && msg.records[0] != nil {
 				for idx, p := range m.periods {
 					if p.FolderPath == msg.records[0].FolderPath {
@@ -474,8 +993,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 			}
+			m.activeTab = 3
+			m.mainScroll = 0
 			m.statusText = m.T("parsed_chats", len(msg.records))
-			m.addTrace(fmt.Sprintf("Completed period summarization for %d chats.", len(msg.records)))
+			m.addTrace("Completed period summarization -> switched to Tab 3 (Period Archive).")
 		}
 		return m, waitForUIEvent(m.uiEventCh)
 
@@ -483,10 +1004,58 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.activeModal != modalNone {
 			return m.handleModalKey(msg)
 		}
+		if m.activeTab == 1 && m.chatComposing {
+			return m.handleLiveComposeKey(msg)
+		}
 		return m.handleMainKey(msg)
 	}
 
 	return m, nil
+}
+
+func (m *Model) handleLiveComposeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	key := msg.String()
+	switch key {
+	case "esc":
+		m.chatComposing = false
+		return m, nil
+	case "ctrl+c":
+		if m.qrCancel != nil {
+			m.qrCancel()
+		}
+		if m.liveStreamCancel != nil {
+			m.liveStreamCancel()
+		}
+		return m, tea.Quit
+	case "ctrl+u":
+		m.chatInputBuffer = ""
+		return m, nil
+	case "enter":
+		text := strings.TrimSpace(m.chatInputBuffer)
+		m.chatInputBuffer = ""
+		m.chatComposing = false
+		if text == "" {
+			return m, nil
+		}
+		ch := m.activeChat()
+		if ch == nil {
+			return m, nil
+		}
+		return m, m.sendLiveMessageCmd(*ch, text)
+	case "backspace":
+		if len(m.chatInputBuffer) > 0 {
+			_, sz := utf8.DecodeLastRuneInString(m.chatInputBuffer)
+			m.chatInputBuffer = m.chatInputBuffer[:len(m.chatInputBuffer)-sz]
+		}
+		return m, nil
+	default:
+		if utf8.RuneCountInString(key) == 1 {
+			m.chatInputBuffer += key
+		} else if key == "space" || key == " " {
+			m.chatInputBuffer += " "
+		}
+		return m, nil
+	}
 }
 
 func (m *Model) handleModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -537,7 +1106,10 @@ func (m *Model) handleModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			m.periodSpec = val
 			m.cfg.DefaultPeriod = val
-			m.addTrace("Updated active period window to: " + val)
+			if cfg, ok := m.activeChatAIConfig(); ok {
+				m.saveCurrentChatAIConfig(cfg.Skill, cfg.Notes, val, true)
+			}
+			m.addTrace("Updated period window for chat to: " + val)
 			m.activeModal = modalNone
 		case "backspace":
 			if len(m.inputBuffer) > 0 {
@@ -555,21 +1127,35 @@ func (m *Model) handleModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "esc":
 			m.activeModal = modalNone
 		case "enter":
+			// Pure Single-Shot: cancels any previous running instruction for this chat and runs fresh
 			val := strings.TrimSpace(m.inputBuffer)
-			m.runNotes = val
-			m.cfg.SaveSkillSettings(m.activeSkill, m.runNotes)
-			if rec := m.activePeriodRecord(); rec != nil {
-				rec.Prompt = val
-				_ = storage.SavePeriodRun(*rec)
+			m.inputBuffer = ""
+			m.activeModal = modalNone
+			if val == "" {
+				return m, nil
 			}
-			m.addTrace("Updated extra run notes for summarization.")
-			m.activeModal = modalNone
-		case "ctrl+r":
+			m.activeTab = 1
+			m.focus = focusMain
+			return m, m.runSingleShotInstructionCmd(val, false)
+		case "ctrl+a", "ctrl+r":
+			// Append Mode: keeps any currently running instruction and appends/queues the new one on top
 			val := strings.TrimSpace(m.inputBuffer)
-			m.runNotes = val
-			m.cfg.SaveSkillSettings(m.activeSkill, m.runNotes)
+			m.inputBuffer = ""
 			m.activeModal = modalNone
-			return m, m.rePromptActivePeriodCmd()
+			if val == "" {
+				return m, nil
+			}
+			m.activeTab = 1
+			m.focus = focusMain
+			return m, m.runSingleShotInstructionCmd(val, true)
+		case "ctrl+x":
+			// Stop / Cancel any running single-shot instruction for this chat
+			if ch := m.activeChat(); ch != nil {
+				if m.cancelSingleShotForChat(ch.ChatID, ch.Title) {
+					m.statusText = "Single-Shot stopped"
+				}
+			}
+			return m, nil
 		case "ctrl+u":
 			m.inputBuffer = ""
 		case "backspace":
@@ -694,7 +1280,6 @@ func (m *Model) handleModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		case "t", "ctrl+t":
-			// Only trigger shortcut 't' if user isn't typing into API Hash or Gemini Key (or allow Enter / Ctrl+T anytime, and 't' when in numeric fields 0 or 2)
 			if key == "ctrl+t" || m.formFocus == 0 || m.formFocus == 2 {
 				return m, m.startConnectionTestCmd()
 			}
@@ -735,7 +1320,6 @@ func (m *Model) handleModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.activeModal = modalNone
 			return m, nil
 		case "c":
-			// Switch cleanly back to Credentials & Connection Test Form View!
 			if m.qrCancel != nil {
 				m.qrCancel()
 				m.qrCancel = nil
@@ -835,32 +1419,35 @@ func (m *Model) handleModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
+	case "esc", "backspace":
+		if m.activeTab == 2 && m.tab2BoxEntered {
+			m.tab2BoxEntered = false
+			return m, nil
+		}
+
 	case "q", "ctrl+c":
 		if m.qrCancel != nil {
 			m.qrCancel()
 		}
+		if m.liveStreamCancel != nil {
+			m.liveStreamCancel()
+		}
 		return m, tea.Quit
 
-	case "tab":
-		switch m.focus {
-		case focusChats:
-			m.focus = focusPeriods
-		case focusPeriods:
+	case "tab", "shift+tab":
+		if m.focus == focusChats {
 			m.focus = focusMain
-		default:
+		} else {
 			m.focus = focusChats
 		}
 		return m, nil
 
-	case "shift+tab":
-		switch m.focus {
-		case focusChats:
-			m.focus = focusMain
-		case focusPeriods:
-			m.focus = focusChats
-		default:
-			m.focus = focusPeriods
-		}
+	case "h", "left":
+		m.focus = focusChats
+		return m, nil
+
+	case "l", "right":
+		m.focus = focusMain
 		return m, nil
 
 	case "1":
@@ -868,6 +1455,8 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.mainScroll = 0
 	case "2":
 		m.activeTab = 2
+		m.tab2BoxCursor = 0
+		m.tab2BoxEntered = false
 		m.mainScroll = 0
 	case "3":
 		m.activeTab = 3
@@ -875,262 +1464,11 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "4":
 		m.activeTab = 4
 		m.mainScroll = 0
-	case "5":
-		m.activeTab = 5
-		m.mainScroll = 0
 
 	case "L":
 		m.activeModal = modalLoginForm
 		m.formFocus = 2
 		return m, m.startConnectionTestCmd()
-
-	case "h", "left":
-		if m.focus == focusMain {
-			m.focus = focusPeriods
-		} else if m.focus == focusPeriods {
-			m.focus = focusChats
-		}
-
-	case "l", "right":
-		if m.focus == focusChats {
-			m.focus = focusPeriods
-		} else if m.focus == focusPeriods {
-			m.focus = focusMain
-		}
-
-	case "g":
-		switch m.focus {
-		case focusChats:
-			m.chatCursor = 0
-			m.marqueeTick = 0
-		case focusPeriods:
-			m.periodCursor = 0
-			m.mediaCursor = 0
-			m.mainScroll = 0
-			m.marqueeTick = 0
-		case focusMain:
-			if m.activeTab == 2 {
-				m.mediaCursor = 0
-			} else if m.activeTab == 4 {
-				m.skillCursor = 0
-			}
-			m.mainScroll = 0
-		}
-
-	case "G":
-		switch m.focus {
-		case focusChats:
-			if len(m.chats) > 0 {
-				m.chatCursor = len(m.chats) - 1
-				m.marqueeTick = 0
-			}
-		case focusPeriods:
-			if len(m.periods) > 0 {
-				m.periodCursor = len(m.periods) - 1
-				m.mediaCursor = 0
-				m.mainScroll = 0
-				m.marqueeTick = 0
-			}
-		case focusMain:
-			if m.activeTab == 2 {
-				rec := m.activePeriodRecord()
-				if rec != nil && len(rec.MediaItems) > 0 {
-					m.mediaCursor = len(rec.MediaItems) - 1
-				}
-			} else {
-				if m.activeTab == 4 && len(m.skillList) > 0 {
-					m.skillCursor = len(m.skillList) - 1
-				}
-				m.mainScroll += 1000
-			}
-		}
-
-	case "ctrl+d":
-		switch m.focus {
-		case focusChats:
-			if len(m.chats) > 0 {
-				m.chatCursor = minInt(len(m.chats)-1, m.chatCursor+6)
-				m.marqueeTick = 0
-			}
-		case focusPeriods:
-			if len(m.periods) > 0 {
-				m.periodCursor = minInt(len(m.periods)-1, m.periodCursor+4)
-				m.mediaCursor = 0
-				m.mainScroll = 0
-				m.marqueeTick = 0
-			}
-		case focusMain:
-			if m.activeTab == 2 {
-				rec := m.activePeriodRecord()
-				if rec != nil && len(rec.MediaItems) > 0 {
-					m.mediaCursor = minInt(len(rec.MediaItems)-1, m.mediaCursor+3)
-				}
-			} else {
-				m.mainScroll += 8
-			}
-		}
-
-	case "ctrl+u":
-		switch m.focus {
-		case focusChats:
-			m.chatCursor = maxInt(0, m.chatCursor-6)
-			m.marqueeTick = 0
-		case focusPeriods:
-			m.periodCursor = maxInt(0, m.periodCursor-4)
-			m.mediaCursor = 0
-			m.mainScroll = 0
-			m.marqueeTick = 0
-		case focusMain:
-			if m.activeTab == 2 {
-				m.mediaCursor = maxInt(0, m.mediaCursor-3)
-			} else {
-				m.mainScroll = maxInt(0, m.mainScroll-8)
-			}
-		}
-
-	case "[", "k", "up":
-		if msg.String() == "[" {
-			if m.mainScroll > 0 {
-				m.mainScroll--
-			}
-			return m, nil
-		}
-		switch m.focus {
-		case focusChats:
-			if m.chatCursor > 0 {
-				m.chatCursor--
-				m.marqueeTick = 0
-			}
-		case focusPeriods:
-			if m.periodCursor > 0 {
-				m.periodCursor--
-				m.mediaCursor = 0
-				m.mainScroll = 0
-				m.marqueeTick = 0
-			}
-		case focusMain:
-			if m.activeTab == 2 {
-				if m.mediaCursor > 0 {
-					m.mediaCursor--
-				}
-			} else if m.activeTab == 4 {
-				targetLine := 9 + m.skillCursor
-				if m.mainScroll > targetLine {
-					m.mainScroll--
-				} else if m.skillCursor > 0 {
-					m.skillCursor--
-					newTarget := 9 + m.skillCursor
-					if newTarget < m.mainScroll+1 {
-						m.mainScroll = maxInt(0, newTarget-1)
-					}
-				} else if m.mainScroll > 0 {
-					m.mainScroll--
-				}
-			} else if m.mainScroll > 0 {
-				m.mainScroll--
-			}
-		}
-
-	case "]", "j", "down":
-		if msg.String() == "]" {
-			m.mainScroll++
-			return m, nil
-		}
-		switch m.focus {
-		case focusChats:
-			if m.chatCursor < len(m.chats)-1 {
-				m.chatCursor++
-				m.marqueeTick = 0
-			} else if len(m.periods) > 0 {
-				m.focus = focusPeriods
-				m.marqueeTick = 0
-			}
-		case focusPeriods:
-			if m.periodCursor < len(m.periods)-1 {
-				m.periodCursor++
-				m.mediaCursor = 0
-				m.mainScroll = 0
-				m.marqueeTick = 0
-			}
-		case focusMain:
-			if m.activeTab == 2 {
-				rec := m.activePeriodRecord()
-				if rec != nil && m.mediaCursor < len(rec.MediaItems)-1 {
-					m.mediaCursor++
-				}
-			} else if m.activeTab == 4 {
-				visibleRows := maxInt(1, m.height-8)
-				if m.skillCursor < len(m.skillList)-1 {
-					m.skillCursor++
-					targetLine := 9 + m.skillCursor
-					if targetLine >= m.mainScroll+visibleRows-2 {
-						m.mainScroll = targetLine - visibleRows + 3
-					}
-				} else {
-					m.mainScroll++
-				}
-			} else {
-				m.mainScroll++
-			}
-		}
-
-	case "J":
-		m.mainScroll += 4
-
-	case "K":
-		m.mainScroll = maxInt(0, m.mainScroll-4)
-
-	case "d", "x", "backspace", "delete":
-		if rec := m.activePeriodRecord(); rec != nil {
-			m.deleteBtnFocus = 0
-			m.activeModal = modalConfirmDelete
-		}
-
-	case " ":
-		if m.focus == focusChats && m.chatCursor >= 0 && m.chatCursor < len(m.chats) {
-			cid := m.chats[m.chatCursor].ChatID
-			if m.selectedChats[cid] {
-				delete(m.selectedChats, cid)
-			} else {
-				m.selectedChats[cid] = true
-			}
-		}
-
-	case "a":
-		if m.focus == focusChats {
-			if len(m.selectedChats) == len(m.chats) {
-				m.selectedChats = make(map[int64]bool)
-			} else {
-				for _, c := range m.chats {
-					m.selectedChats[c.ChatID] = true
-				}
-			}
-		} else {
-			m.activeModal = modalPrompt
-			if rec := m.activePeriodRecord(); rec != nil && strings.TrimSpace(rec.Prompt) != "" {
-				m.inputBuffer = rec.Prompt
-			} else {
-				m.inputBuffer = m.runNotes
-			}
-		}
-
-	case "e":
-		if len(m.skillList) > 0 {
-			if m.skillCursor < 0 || m.skillCursor >= len(m.skillList) {
-				m.skillCursor = 0
-			}
-			sk := m.skillList[m.skillCursor]
-			m.addTrace("Opening skill in $EDITOR: " + sk.Path)
-			return m, openEditorCmd(sk.Path)
-		}
-
-	case "n":
-		m.inputBuffer = ""
-		m.activeModal = modalNewSkill
-
-	case "p":
-		m.activeModal = modalPeriod
-		m.inputBuffer = m.periodSpec
 
 	case "c":
 		m.aiFormFields[0] = m.cfg.AgyCLIBin()
@@ -1148,53 +1486,392 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.activeModal = modalGlobalConfig
 
-	case "m":
-		m.activeModal = modalPrompt
-		if rec := m.activePeriodRecord(); rec != nil && strings.TrimSpace(rec.Prompt) != "" {
-			m.inputBuffer = rec.Prompt
-		} else {
-			m.inputBuffer = m.runNotes
-		}
-
-	case "r":
-		if !m.statusBusy {
-			return m, m.rePromptActivePeriodCmd()
-		}
-
 	case "?":
 		m.activeModal = modalHelp
 
-	case "s", "enter":
-		if m.focus == focusPeriods && msg.String() == "enter" {
+	case "i":
+		if m.activeTab == 1 {
 			m.focus = focusMain
+			m.chatComposing = true
 			return m, nil
 		}
-		if m.focus == focusMain && m.activeTab == 4 && msg.String() == "enter" {
-			if m.skillCursor >= 0 && m.skillCursor < len(m.skillList) {
-				sel := m.skillList[m.skillCursor]
-				if sel.Kind == skills.KindSummary {
-					m.activeSkill = sel.Name
-					m.cfg.SaveSkillSettings(m.activeSkill, m.runNotes)
-					m.addTrace("Activated summary skill: " + sel.Name)
-				} else {
-					m.addTrace(fmt.Sprintf("Media skill '%s' covers: %s", sel.Name, strings.Join(sel.Media, ", ")))
+
+	case "[":
+		if m.activeTab == 3 && len(m.periods) > 1 {
+			m.periodCursor = (m.periodCursor - 1 + len(m.periods)) % len(m.periods)
+			m.mediaCursor = 0
+			m.mainScroll = 0
+		} else if m.mainScroll > 0 {
+			m.mainScroll--
+		}
+
+	case "]":
+		if m.activeTab == 3 && len(m.periods) > 1 {
+			m.periodCursor = (m.periodCursor + 1) % len(m.periods)
+			m.mediaCursor = 0
+			m.mainScroll = 0
+		} else {
+			m.mainScroll++
+		}
+
+	case "g":
+		switch m.focus {
+		case focusChats:
+			m.chatCursor = 0
+			m.marqueeTick = 0
+		case focusMain:
+			switch m.activeTab {
+			case 1:
+				m.liveMsgCursor = 0
+			case 2:
+				if !m.tab2BoxEntered {
+					m.tab2BoxCursor = 0
+					m.mainScroll = 0
+				} else if m.tab2BoxCursor == 3 {
+					m.skillCursor = 0
+					m.scrollTab2ToBox(3)
+				} else if m.tab2BoxCursor == 1 {
+					m.tab2ChatOptCursor = 0
 				}
+			case 3:
+				m.mediaCursor = 0
+			}
+			m.mainScroll = 0
+		}
+
+	case "G":
+		switch m.focus {
+		case focusChats:
+			if len(m.chats) > 0 {
+				m.chatCursor = len(m.chats) - 1
+				m.marqueeTick = 0
+			}
+		case focusMain:
+			switch m.activeTab {
+			case 1:
+				if len(m.liveMessages) > 0 {
+					m.liveMsgCursor = len(m.liveMessages) - 1
+				}
+			case 2:
+				if !m.tab2BoxEntered {
+					m.tab2BoxCursor = 4
+					m.scrollTab2ToBox(4)
+				} else if m.tab2BoxCursor == 3 && len(m.skillList) > 0 {
+					m.skillCursor = len(m.skillList) - 1
+					m.scrollTab2ToBox(3)
+				} else if m.tab2BoxCursor == 1 {
+					m.tab2ChatOptCursor = 3
+				}
+			default:
+				m.mainScroll += 1000
+			}
+		}
+
+	case "ctrl+d":
+		switch m.focus {
+		case focusChats:
+			if len(m.chats) > 0 {
+				m.chatCursor = minInt(len(m.chats)-1, m.chatCursor+6)
+				m.marqueeTick = 0
+			}
+		case focusMain:
+			if m.activeTab == 1 && len(m.liveMessages) > 0 {
+				m.liveMsgCursor = minInt(len(m.liveMessages)-1, m.liveMsgCursor+5)
+			} else {
+				m.mainScroll += 8
+			}
+		}
+
+	case "ctrl+u":
+		switch m.focus {
+		case focusChats:
+			m.chatCursor = maxInt(0, m.chatCursor-6)
+			m.marqueeTick = 0
+		case focusMain:
+			if m.activeTab == 1 {
+				m.liveMsgCursor = maxInt(0, m.liveMsgCursor-5)
+			} else {
+				m.mainScroll = maxInt(0, m.mainScroll-8)
+			}
+		}
+
+	case "k", "up":
+		switch m.focus {
+		case focusChats:
+			if m.chatCursor > 0 {
+				m.chatCursor--
+				m.marqueeTick = 0
+			}
+		case focusMain:
+			switch m.activeTab {
+			case 1:
+				if m.liveMsgCursor > 0 {
+					m.liveMsgCursor--
+				}
+			case 2:
+				if !m.tab2BoxEntered {
+					if m.tab2BoxCursor > 0 {
+						m.tab2BoxCursor--
+					}
+					m.scrollTab2ToBox(m.tab2BoxCursor)
+				} else if m.tab2BoxCursor == 1 {
+					if m.tab2ChatOptCursor > 0 {
+						m.tab2ChatOptCursor--
+					}
+				} else if m.tab2BoxCursor == 3 {
+					if m.skillCursor > 0 {
+						m.skillCursor--
+					}
+					m.scrollTab2ToSkill()
+				}
+			default:
+				if m.mainScroll > 0 {
+					m.mainScroll--
+				}
+			}
+		}
+
+	case "j", "down":
+		switch m.focus {
+		case focusChats:
+			if m.chatCursor < len(m.chats)-1 {
+				m.chatCursor++
+				m.marqueeTick = 0
+			}
+		case focusMain:
+			switch m.activeTab {
+			case 1:
+				if m.liveMsgCursor < len(m.liveMessages)-1 {
+					m.liveMsgCursor++
+				}
+			case 2:
+				if !m.tab2BoxEntered {
+					if m.tab2BoxCursor < 4 {
+						m.tab2BoxCursor++
+					}
+					m.scrollTab2ToBox(m.tab2BoxCursor)
+				} else if m.tab2BoxCursor == 1 {
+					if m.tab2ChatOptCursor < 3 {
+						m.tab2ChatOptCursor++
+					}
+				} else if m.tab2BoxCursor == 3 {
+					if m.skillCursor < len(m.skillList)-1 {
+						m.skillCursor++
+					}
+					m.scrollTab2ToSkill()
+				}
+			default:
+				m.mainScroll++
+			}
+		}
+
+	case "J":
+		m.mainScroll += 4
+
+	case "K":
+		m.mainScroll = maxInt(0, m.mainScroll-4)
+
+	case "a":
+		if m.activeTab == 1 {
+			if ch := m.activeChat(); ch != nil {
+				sendMode := "draft"
+				if cfg, ok := m.activeChatAIConfig(); ok && cfg.SendMode != "" {
+					sendMode = cfg.SendMode
+				}
+				return m, m.generateAIChatReplyCmd(*ch, m.liveMessages, sendMode)
+			}
+		} else if m.activeTab == 2 {
+			m.toggleChatAutoReply()
+			return m, nil
+		}
+
+	case "A":
+		if m.activeTab == 1 || m.activeTab == 2 {
+			if ch := m.activeChat(); ch != nil {
+				sendMode := "draft"
+				if cfg, ok := m.activeChatAIConfig(); ok && cfg.SendMode != "" {
+					sendMode = cfg.SendMode
+				}
+				return m, m.generateAIChatReplyCmd(*ch, m.liveMessages, sendMode)
+			}
+		}
+
+	case "s":
+		if m.activeTab == 2 {
+			m.toggleChatSendMode()
+			return m, nil
+		}
+
+	case "x":
+		if m.activeTab == 2 {
+			ch := m.activeChat()
+			if ch != nil {
+				m.cancelSingleShotForChat(ch.ChatID, ch.Title)
+				m.saveCurrentChatAIConfig("", "", m.periodSpec, false)
+				m.addTrace(fmt.Sprintf("Disabled per-chat AI configuration for '%s'", ch.Title))
+			}
+		} else if m.activeTab == 3 {
+			if rec := m.activePeriodRecord(); rec != nil {
+				m.deleteBtnFocus = 0
+				m.activeModal = modalConfirmDelete
+			}
+		}
+
+	case "d":
+		if m.activeTab == 3 {
+			if rec := m.activePeriodRecord(); rec != nil {
+				m.deleteBtnFocus = 0
+				m.activeModal = modalConfirmDelete
+			}
+		}
+
+	case " ":
+		if m.focus == focusChats {
+			return m, m.selectChatAtIndex(m.chatCursor)
+		}
+
+	case "enter":
+		if m.focus == focusChats {
+			cmd := m.selectChatAtIndex(m.chatCursor)
+			m.focus = focusMain
+			return m, cmd
+		}
+		if m.activeTab == 1 {
+			m.chatComposing = true
+			return m, nil
+		}
+		if m.activeTab == 2 {
+			if !m.tab2BoxEntered {
+				switch m.tab2BoxCursor {
+				case 0:
+					m.activeModal = modalHelp
+				case 1:
+					m.tab2BoxEntered = true
+					m.tab2ChatOptCursor = 0
+					m.scrollTab2ToBox(1)
+				case 2:
+					m.aiFormFields[0] = m.cfg.AgyCLIBin()
+					m.aiFormFields[1] = m.cfg.AgyModel
+					if strings.TrimSpace(m.aiFormFields[1]) == "" {
+						m.aiFormFields[1] = "auto"
+					}
+					m.aiFormFocus = 0
+					m.activeModal = modalAIConfig
+				case 3:
+					m.tab2BoxEntered = true
+					m.scrollTab2ToSkill()
+				case 4:
+					if len(m.periods) > 0 {
+						m.activeTab = 3
+						m.mainScroll = 0
+					} else if !m.statusBusy {
+						return m, m.runChatAICmd()
+					}
+				}
+				return m, nil
+			}
+
+			// Inside an entered box in Tab 2:
+			if m.tab2BoxCursor == 1 {
+				switch m.tab2ChatOptCursor {
+				case 0:
+					// Jump to Skills Library box to pick active skill
+					m.tab2BoxCursor = 3
+					m.tab2BoxEntered = true
+					m.scrollTab2ToSkill()
+				case 1:
+					m.toggleChatAutoReply()
+				case 2:
+					m.toggleChatSendMode()
+				case 3:
+					m.activeModal = modalPrompt
+					m.inputBuffer = ""
+				}
+				return m, nil
+			}
+
+			if m.tab2BoxCursor == 3 {
+				if m.skillCursor >= 0 && m.skillCursor < len(m.skillList) {
+					sel := m.skillList[m.skillCursor]
+					if sel.Kind == skills.KindSummary {
+						m.activeSkill = sel.Name
+						m.saveCurrentChatAIConfig(sel.Name, m.runNotes, m.periodSpec, true)
+						if ch := m.activeChat(); ch != nil {
+							m.addTrace(fmt.Sprintf("Enabled AI skill '%s' for chat '%s'", sel.Name, ch.Title))
+						}
+					} else {
+						m.addTrace(fmt.Sprintf("Media skill '%s' covers: %s", sel.Name, strings.Join(sel.Media, ", ")))
+					}
+				}
+				return m, nil
+			}
+			return m, nil
+		}
+
+	case "m":
+		if m.activeTab == 1 || m.activeTab == 2 || m.activeTab == 3 {
+			m.activeModal = modalPrompt
+			m.inputBuffer = ""
+		}
+
+	case "e":
+		if m.activeTab == 2 && len(m.skillList) > 0 {
+			if m.skillCursor < 0 || m.skillCursor >= len(m.skillList) {
+				m.skillCursor = 0
+			}
+			sk := m.skillList[m.skillCursor]
+			m.addTrace("Opening skill in $EDITOR: " + sk.Path)
+			return m, openEditorCmd(sk.Path)
+		}
+
+	case "n":
+		if m.activeTab == 2 {
+			m.inputBuffer = ""
+			m.activeModal = modalNewSkill
+		} else if m.activeTab == 3 {
+			if rec := m.activePeriodRecord(); rec != nil && len(rec.MediaItems) > 0 {
+				m.mediaCursor = (m.mediaCursor + 1) % len(rec.MediaItems)
+			}
+		}
+
+	case "p":
+		if m.activeTab == 2 || m.activeTab == 3 {
+			m.activeModal = modalPeriod
+			m.inputBuffer = m.periodSpec
+		}
+
+	case "r":
+		if m.activeTab == 1 {
+			if ch := m.activeChat(); ch != nil {
+				m.statusText = "Refreshing chat..."
+				return m, m.loadChatMessagesCmd(*ch)
 			}
 			return m, nil
 		}
 		if !m.statusBusy {
-			return m, m.startBatchParseCmd()
+			return m, m.runChatAICmd()
 		}
 
 	case "o":
-		rec := m.activePeriodRecord()
-		if rec != nil && rec.FolderPath != "" {
-			_ = exec.Command("open", rec.FolderPath).Start()
-			m.addTrace("Opened in Finder: " + rec.FolderPath)
+		if m.activeTab == 3 {
+			rec := m.activePeriodRecord()
+			if rec != nil && rec.FolderPath != "" {
+				_ = exec.Command("open", rec.FolderPath).Start()
+				m.addTrace("Opened in Finder: " + rec.FolderPath)
+			}
 		}
 
 	case "v":
-		if m.activeTab == 4 {
+		switch m.activeTab {
+		case 1:
+			ch := m.activeChat()
+			if ch != nil && m.liveMsgCursor >= 0 && m.liveMsgCursor < len(m.liveMessages) {
+				lm := m.liveMessages[m.liveMsgCursor]
+				if lm.MediaType != "" {
+					return m, m.downloadAndOpenLiveMediaCmd(*ch, lm)
+				}
+			}
+		case 2:
 			if len(m.skillList) > 0 {
 				if m.skillCursor < 0 || m.skillCursor >= len(m.skillList) {
 					m.skillCursor = 0
@@ -1202,23 +1879,26 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.previewScroll = 0
 				m.activeModal = modalSkillPreview
 			}
-			return m, nil
-		}
-		rec := m.activePeriodRecord()
-		if rec != nil {
-			if m.activeTab == 2 && m.mediaCursor >= 0 && m.mediaCursor < len(rec.MediaItems) {
-				it := rec.MediaItems[m.mediaCursor]
-				if it.MediaType == "voice" {
-					_ = exec.Command("afplay", it.FilePath).Start()
-					m.addTrace("Playing audio: " + it.FilePath)
+		case 3:
+			rec := m.activePeriodRecord()
+			if rec != nil {
+				if len(rec.MediaItems) > 0 {
+					if m.mediaCursor < 0 || m.mediaCursor >= len(rec.MediaItems) {
+						m.mediaCursor = 0
+					}
+					it := rec.MediaItems[m.mediaCursor]
+					if it.MediaType == "voice" {
+						_ = exec.Command("afplay", it.FilePath).Start()
+						m.addTrace("Playing audio: " + it.FilePath)
+					} else {
+						_ = exec.Command("qlmanage", "-p", it.FilePath).Start()
+						m.addTrace("QuickLook preview: " + it.FilePath)
+					}
 				} else {
-					_ = exec.Command("qlmanage", "-p", it.FilePath).Start()
-					m.addTrace("QuickLook preview: " + it.FilePath)
+					mdPath := filepath.Join(rec.FolderPath, "summary.md")
+					_ = exec.Command("qlmanage", "-p", mdPath).Start()
+					m.addTrace("QuickLook summary: " + mdPath)
 				}
-			} else {
-				mdPath := filepath.Join(rec.FolderPath, "summary.md")
-				_ = exec.Command("qlmanage", "-p", mdPath).Start()
-				m.addTrace("QuickLook summary: " + mdPath)
 			}
 		}
 	}
@@ -1325,142 +2005,241 @@ func (m *Model) loadDialogsCmd() tea.Cmd {
 	}
 }
 
-func (m *Model) startBatchParseCmd() tea.Cmd {
-	var targets []storage.ChatInfo
-	for _, c := range m.chats {
-		if m.selectedChats[c.ChatID] {
-			targets = append(targets, c)
+func (m *Model) getChatSingleShotRunner(chatID int64) *chatSingleShotRunner {
+	if m.singleShotRunners == nil {
+		m.singleShotRunners = make(map[int64]*chatSingleShotRunner)
+	}
+	r, ok := m.singleShotRunners[chatID]
+	if !ok {
+		r = &chatSingleShotRunner{}
+		if cfg, hasCfg := m.chatAIConfigs[chatID]; hasCfg && strings.TrimSpace(cfg.Notes) != "" {
+			r.history = []string{strings.TrimSpace(cfg.Notes)}
 		}
+		m.singleShotRunners[chatID] = r
 	}
-	if len(targets) == 0 && m.chatCursor >= 0 && m.chatCursor < len(m.chats) {
-		targets = append(targets, m.chats[m.chatCursor])
+	return r
+}
+
+func (m *Model) cancelSingleShotForChat(chatID int64, chatTitle string) bool {
+	r := m.getChatSingleShotRunner(chatID)
+	r.mu.Lock()
+	wasRunning := r.running
+	hadHistory := len(r.history) > 0
+	if r.cancel != nil {
+		r.cancel()
+		r.cancel = nil
 	}
-	if len(targets) == 0 {
+	r.running = false
+	r.currentInstr = ""
+	r.queue = nil
+	r.history = nil
+	r.mu.Unlock()
+
+	if cfg, ok := m.chatAIConfigs[chatID]; ok && cfg.Notes != "" {
+		cfg.Notes = ""
+		m.chatAIConfigs[chatID] = cfg
+		_ = storage.SaveChatAIConfigs(m.cfg.DataDir, m.chatAIConfigs)
+		m.syncCurrentChatAISettings()
+	}
+	if wasRunning || hadHistory {
+		m.addTrace(fmt.Sprintf("Cleared/stopped single-shot AI instruction for '%s'", chatTitle))
+	}
+	return wasRunning || hadHistory
+}
+
+// runSingleShotInstructionCmd executes a standalone AI instruction directly in the selected chat.
+// When appendMode is false (Enter), any previous running instruction for this chat is cancelled immediately and replaced.
+// When appendMode is true (Ctrl+A / Ctrl+R), the new instruction is appended/queued after any active instruction without cancelling it.
+func (m *Model) runSingleShotInstructionCmd(instruction string, appendMode bool) tea.Cmd {
+	ch := m.activeChat()
+	if ch == nil {
 		return nil
 	}
+	target := *ch
+	msgsCopy := make([]storage.LiveMessage, len(m.liveMessages))
+	copy(msgsCopy, m.liveMessages)
 
-	m.statusBusy = true
-	m.jobDone = 0
-	m.jobTotal = len(targets)
-	m.statusText = fmt.Sprintf("Parsing 0/%d...", len(targets))
-	periodSpec := m.periodSpec
-	skillName := m.activeSkill
-	notes := m.runNotes
+	runner := m.getChatSingleShotRunner(target.ChatID)
+	runner.mu.Lock()
 
-	go func() {
-		ctx := context.Background()
-		var out []*storage.PeriodSummaryRecord
-		for idx, chat := range targets {
-			m.uiEventCh <- parseLogMsg(fmt.Sprintf("(%d/%d) Parsing %s [%s] via skill '%s'...", idx+1, len(targets), chat.Title, periodSpec, skillName))
-			rec, err := m.mtproto.ParseChatPeriod(ctx, chat, periodSpec, skillName, notes, func(logLine string) {
-				m.uiEventCh <- parseLogMsg(logLine)
-			})
+	if !appendMode {
+		// Pure Single-Shot: cancel any active execution or queued instructions for this chat
+		if runner.cancel != nil {
+			runner.cancel()
+			runner.cancel = nil
+		}
+		if runner.running {
+			m.addTrace(fmt.Sprintf("Cancelled previous single-shot instruction in '%s' to run new single-shot.", target.Title))
+		}
+		runner.queue = []string{instruction}
+		runner.history = []string{instruction}
+	} else {
+		// Append Mode: keep running instruction and queue/combine this one
+		runner.history = append(runner.history, instruction)
+		if runner.running {
+			runner.queue = append(runner.queue, instruction)
+			queuedCount := len(runner.queue)
+			combinedNotes := strings.Join(runner.history, " + ")
+			runner.mu.Unlock()
+			skillToUse := m.activeSkill
+			if cfg, ok := m.activeChatAIConfig(); ok && cfg.Skill != "" {
+				skillToUse = cfg.Skill
+			}
+			m.saveCurrentChatAIConfig(skillToUse, combinedNotes, m.periodSpec, true)
+			m.statusText = fmt.Sprintf("Appended (#%d in queue)", queuedCount)
+			m.addTrace(fmt.Sprintf("Appended instruction to active single-shot queue for '%s': %s", target.Title, instruction))
+			return nil
+		}
+		combined := strings.Join(runner.history, "\nThen also: ")
+		runner.queue = []string{combined}
+	}
+
+	persistedNotes := strings.Join(runner.history, " + ")
+	ctx, cancel := context.WithCancel(context.Background())
+	runner.cancel = cancel
+	runner.running = true
+	runner.mu.Unlock()
+
+	skillToUse := m.activeSkill
+	if cfg, ok := m.activeChatAIConfig(); ok && cfg.Skill != "" {
+		skillToUse = cfg.Skill
+	}
+	m.saveCurrentChatAIConfig(skillToUse, persistedNotes, m.periodSpec, true)
+
+	m.statusText = "AI Single-Shot..."
+	if appendMode {
+		m.addTrace(fmt.Sprintf("Executing appended single-shot AI instruction in '%s': %s", target.Title, instruction))
+	} else {
+		m.addTrace(fmt.Sprintf("Executing fresh single-shot AI instruction in '%s': %s", target.Title, instruction))
+	}
+
+	go func(runCtx context.Context) {
+		defer func() {
+			runner.mu.Lock()
+			if runner.cancel != nil {
+				// Only clear running state if this goroutine wasn't superseded by a newer one
+				select {
+				case <-runCtx.Done():
+				default:
+					runner.running = false
+					runner.currentInstr = ""
+				}
+			}
+			runner.mu.Unlock()
+		}()
+
+		for {
+			runner.mu.Lock()
+			if len(runner.queue) == 0 {
+				runner.running = false
+				runner.currentInstr = ""
+				runner.mu.Unlock()
+				break
+			}
+			nextInstr := runner.queue[0]
+			runner.queue = runner.queue[1:]
+			runner.currentInstr = nextInstr
+			runner.mu.Unlock()
+
+			select {
+			case <-runCtx.Done():
+				return
+			default:
+			}
+
+			planCtx, planCancel := context.WithTimeout(runCtx, 60*time.Second)
+			actions, err := m.ai.PlanSingleShotInstruction(planCtx, target.Title, msgsCopy, nextInstr)
+			planCancel()
 			if err != nil {
-				m.uiEventCh <- parseDoneMsg{records: out, err: err}
+				if runCtx.Err() != nil {
+					return
+				}
+				m.uiEventCh <- parseLogMsg(fmt.Sprintf("Single-shot AI error: %v", err))
 				return
 			}
-			out = append(out, rec)
+			m.uiEventCh <- parseLogMsg(fmt.Sprintf("AI planned %d message(s) for '%s'", len(actions), target.Title))
+
+			for idx, act := range actions {
+				if act.DelaySeconds > 0 {
+					for rem := act.DelaySeconds; rem > 0; rem-- {
+						select {
+						case <-runCtx.Done():
+							return
+						default:
+						}
+						m.uiEventCh <- parseLogMsg(fmt.Sprintf("AI Single-Shot [%d/%d]: waiting %ds...", idx+1, len(actions), rem))
+						select {
+						case <-runCtx.Done():
+							return
+						case <-time.After(1 * time.Second):
+						}
+					}
+				}
+				select {
+				case <-runCtx.Done():
+					return
+				default:
+				}
+				m.uiEventCh <- parseLogMsg(fmt.Sprintf("AI Single-Shot [%d/%d]: sending message...", idx+1, len(actions)))
+				sendCtx, sendCancel := context.WithTimeout(runCtx, 15*time.Second)
+				sent, sendErr := m.mtproto.SendMessage(sendCtx, target, act.Text)
+				sendCancel()
+				if runCtx.Err() != nil {
+					return
+				}
+				m.uiEventCh <- liveMessageSentMsg{chatID: target.ChatID, msg: sent, err: sendErr}
+				if sendErr != nil {
+					return
+				}
+				msgsCopy = append(msgsCopy, sent)
+			}
+			m.uiEventCh <- parseLogMsg(fmt.Sprintf("Ready (AI sent %d msg(s))", len(actions)))
 		}
-		m.uiEventCh <- parseDoneMsg{records: out, err: nil}
-	}()
+	}(ctx)
 
 	return nil
 }
 
-func (m *Model) rePromptActivePeriodCmd() tea.Cmd {
-	rec := m.activePeriodRecord()
-	if rec == nil {
+// runChatAICmd parses and summarizes the currently selected chat for its configured period, skill, and notes.
+func (m *Model) runChatAICmd() tea.Cmd {
+	ch := m.activeChat()
+	if ch == nil {
 		return nil
 	}
+	target := *ch
+
+	skillName := config.DefaultSkillName
+	periodSpec := m.periodSpec
+	if cfg, ok := m.activeChatAIConfig(); ok {
+		if cfg.Skill != "" {
+			skillName = cfg.Skill
+		}
+		if cfg.PeriodSpec != "" {
+			periodSpec = cfg.PeriodSpec
+		}
+	} else if m.activeSkill != "" {
+		skillName = m.activeSkill
+	}
+	if periodSpec == "" {
+		periodSpec = "1m"
+	}
+
 	m.statusBusy = true
-	m.statusText = "Re-fetching AI..."
-	skillName := m.activeSkill
-	if skillName == "" {
-		skillName = rec.Skill
-	}
-	if skillName == "" {
-		skillName = m.cfg.DefaultSkill
-	}
-	notes := strings.TrimSpace(m.runNotes)
-	if notes == "" {
-		notes = rec.Prompt
-	}
-	recCopy := *rec
-	recCopy.Messages = append([]storage.MessageRecord(nil), rec.Messages...)
-	recCopy.MediaItems = append([]storage.MediaItemRecord(nil), rec.MediaItems...)
+	m.jobDone = 0
+	m.jobTotal = 1
+	m.statusText = fmt.Sprintf("Running AI (%s)...", target.Title)
 
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
-		defer cancel()
-
-		m.uiEventCh <- parseLogMsg(fmt.Sprintf("Re-running AI fetching (skill=%s, model=%s): %s", skillName, m.cfg.ActiveModelLabel(), recCopy.FolderPath))
-
-		// 1. Transcribe / analyze media items in the selected period folder with media skills
-		msgByMediaFile := make(map[string]int, len(recCopy.Messages))
-		msgByID := make(map[int]int, len(recCopy.Messages))
-		for idx, msg := range recCopy.Messages {
-			if msg.MediaFile != "" {
-				msgByMediaFile[msg.MediaFile] = idx
-			}
-			if msg.MessageID != 0 {
-				msgByID[msg.MessageID] = idx
-			}
+		ctx := context.Background()
+		m.uiEventCh <- parseLogMsg(fmt.Sprintf("Running AI for '%s' [%s] via skill '%s'...", target.Title, periodSpec, skillName))
+		rec, err := m.mtproto.ParseChatPeriod(ctx, target, periodSpec, skillName, "", func(logLine string) {
+			m.uiEventCh <- parseLogMsg(logLine)
+		})
+		if err != nil {
+			m.uiEventCh <- parseDoneMsg{records: nil, err: err}
+			return
 		}
-
-		for i := range recCopy.MediaItems {
-			it := &recCopy.MediaItems[i]
-			if strings.TrimSpace(it.FilePath) == "" {
-				continue
-			}
-			caption := ""
-			if mIdx, ok := msgByID[it.MessageID]; ok {
-				caption = recCopy.Messages[mIdx].Text
-			} else if mIdx, ok := msgByMediaFile[it.FileName]; ok {
-				caption = recCopy.Messages[mIdx].Text
-			}
-
-			m.uiEventCh <- parseLogMsg(fmt.Sprintf("AI analyzing media (%d/%d): %s...", i+1, len(recCopy.MediaItems), it.FileName))
-			res, _ := m.ai.AnalyzeMediaItem(ctx, *it, caption, false)
-			it.AIText = res.Text
-			it.Skill = res.Skill
-			it.SkillHash = res.SkillHash
-
-			if mIdx, ok := msgByID[it.MessageID]; ok {
-				if it.MediaType == "voice" {
-					recCopy.Messages[mIdx].VoiceTranscript = res.Text
-				} else {
-					recCopy.Messages[mIdx].MediaAnalysis = res.Text
-				}
-			} else if mIdx, ok := msgByMediaFile[it.FileName]; ok {
-				if it.MediaType == "voice" {
-					recCopy.Messages[mIdx].VoiceTranscript = res.Text
-				} else {
-					recCopy.Messages[mIdx].MediaAnalysis = res.Text
-				}
-			}
-		}
-
-		// 2. Re-synthesize executive period summary using active summary skill & updated media captures
-		m.uiEventCh <- parseLogMsg(fmt.Sprintf("Generating AI period summary via skill '%s' (%s)...", skillName, m.cfg.ActiveModelLabel()))
-		sum := m.ai.GeneratePeriodSummary(
-			ctx,
-			recCopy.ChatTitle,
-			fmt.Sprintf("%s -> %s (%s)", recCopy.PeriodStart, recCopy.PeriodEnd, recCopy.PeriodSpec),
-			skillName,
-			notes,
-			recCopy.Messages,
-			recCopy.MediaItems,
-		)
-		recCopy.Prompt = notes
-		recCopy.Skill = sum.Skill
-		recCopy.SkillHash = sum.SkillHash
-		recCopy.ModelUsed = m.cfg.ActiveModelLabel()
-		recCopy.ExecutiveSummary = sum.ExecutiveSummary
-		recCopy.KeyDecisions = sum.KeyDecisions
-		recCopy.VoiceMediaInsights = sum.VoiceMediaInsights
-		recCopy.ActionItems = sum.ActionItems
-		_ = storage.SavePeriodRun(recCopy)
-		m.uiEventCh <- parseDoneMsg{records: []*storage.PeriodSummaryRecord{&recCopy}, err: nil}
+		m.uiEventCh <- parseDoneMsg{records: []*storage.PeriodSummaryRecord{rec}, err: nil}
 	}()
 
 	return nil
@@ -1489,10 +2268,7 @@ func (m *Model) executeDeleteActivePeriod() {
 		return
 	}
 	m.addTrace(fmt.Sprintf("Deleted period folder and all media subfolders: %s", targetPath))
-	m.periods = storage.DiscoverAllPeriodFolders(m.cfg.ExportsDir)
-	if m.periodCursor >= len(m.periods) {
-		m.periodCursor = maxInt(0, len(m.periods)-1)
-	}
+	m.refreshChatPeriods()
 	m.mediaCursor = 0
 	m.mainScroll = 0
 	m.statusText = fmt.Sprintf("Deleted %s", sanitizeTerminalText(title))
@@ -1543,18 +2319,26 @@ func (m *Model) renderTopBar() string {
 		icon = "⟳"
 		statusColor = colYellow
 	}
-	left := fmt.Sprintf(" %s │ %s: %s │ %s",
+	chatTitle := "None"
+	aiBadge := ""
+	if ch := m.activeChat(); ch != nil {
+		chatTitle = sanitizeTerminalText(ch.Title)
+		if cfg, ok := m.activeChatAIConfig(); ok {
+			aiBadge = " " + lipgloss.NewStyle().Foreground(colPurple).Bold(true).Render("[AI:"+cfg.Skill+"]")
+		}
+	}
+
+	left := fmt.Sprintf(" %s │ %s%s │ %s: %s",
 		lipgloss.NewStyle().Foreground(statusColor).Bold(true).Render(icon+" "+m.statusText),
+		m.T("active_chat_hdr", lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render(chatTitle)),
+		aiBadge,
 		m.T("period_label"),
 		lipgloss.NewStyle().Foreground(colGreen).Bold(true).Render(m.periodSpec),
-		m.T("selected_chats", len(m.selectedChats)),
 	)
 
 	elapsedSec := int(time.Since(m.startTime).Seconds())
-	right := fmt.Sprintf("%s   %d/%d   %ds ",
+	right := fmt.Sprintf("%s   %ds ",
 		lipgloss.NewStyle().Foreground(colPurple).Render(m.cfg.ActiveModelLabel()),
-		m.jobDone,
-		m.jobTotal,
 		elapsedSec,
 	)
 
@@ -1568,39 +2352,73 @@ func (m *Model) renderTopBar() string {
 		return style.Render(left + strings.Repeat(" ", gap) + right)
 	}
 
-	// When resized narrow, wrap top status bar into 2 lines so nothing is cropped
 	line1 := padOrTruncate(left, m.width)
 	line2 := padOrTruncate(" "+strings.TrimSpace(right), m.width)
 	return style.Render(line1 + "\n" + line2)
 }
 
 func (m *Model) renderBottomBar() string {
-	vLabel := m.T("key_quicklook")
-	if m.activeTab == 4 {
-		vLabel = m.T("key_preview")
-	}
-
-	keys := []struct {
+	type keyPair struct {
 		k string
 		v string
-	}{
-		{"q", m.T("key_quit")},
-		{"h/j/k/l", m.T("key_vim_nav")},
-		{"L", m.T("key_login")},
-		{"s", m.T("key_start_parse")},
-		{"Space", m.T("key_select_chat")},
-		{"d/x", m.T("key_delete_period")},
-		{"p", fmt.Sprintf("%s(%s)", m.T("key_period"), m.periodSpec)},
-		{"c", m.T("key_ai_config")},
-		{"C", m.T("key_global_config")},
-		{"v", vLabel},
-		{"e", m.T("key_edit_skill")},
-		{"n", m.T("key_new_skill")},
-		{"a/m", m.T("key_notes")},
-		{"r", m.T("key_rerun_ai")},
-		{"1-5", m.T("key_views")},
-		{"o", m.T("key_finder")},
-		{"?", m.T("key_help")},
+	}
+
+	// Context-aware hotkeys tailored to the active tab + common global shortcuts
+	var keys []keyPair
+	if m.activeTab == 1 && m.chatComposing {
+		keys = []keyPair{
+			{"Enter", m.T("key_send")},
+			{"Esc", m.T("key_cancel")},
+			{"Ctrl+U", "Clear"},
+		}
+	} else {
+		keys = []keyPair{
+			{"1-4", m.T("key_views")},
+			{"Tab/h/l", m.T("key_focus")},
+			{"j/k", m.T("key_vim_nav")},
+		}
+		if m.focus == focusChats {
+			keys = append(keys, keyPair{"Enter/Space", m.T("key_select_chat")})
+		}
+		switch m.activeTab {
+		case 1:
+			keys = append(keys,
+				keyPair{"i/Enter", m.T("key_compose")},
+				keyPair{"m", m.T("key_notes")},
+				keyPair{"a", m.T("key_ai_reply")},
+				keyPair{"v", m.T("key_quicklook")},
+				keyPair{"r", m.T("key_refresh")},
+			)
+		case 2:
+			keys = append(keys,
+				keyPair{"Enter", m.T("key_activate_skill")},
+				keyPair{"a", m.T("key_auto_reply")},
+				keyPair{"s", m.T("key_send_mode")},
+				keyPair{"A", m.T("key_ai_reply")},
+				keyPair{"x", m.T("key_disable_ai")},
+				keyPair{"m", m.T("key_notes")},
+				keyPair{"v", m.T("key_preview")},
+				keyPair{"e", m.T("key_edit_skill")},
+				keyPair{"n", m.T("key_new_skill")},
+				keyPair{"r", m.T("key_run_ai")},
+			)
+		case 3:
+			keys = append(keys,
+				keyPair{"r", m.T("key_run_ai")},
+				keyPair{"p", fmt.Sprintf("%s(%s)", m.T("key_period"), m.periodSpec)},
+				keyPair{"[/]", m.T("key_prev_next_period")},
+				keyPair{"v", m.T("key_quicklook")},
+				keyPair{"o", m.T("key_finder")},
+				keyPair{"d", m.T("key_delete_period")},
+			)
+		}
+		keys = append(keys,
+			keyPair{"c", m.T("key_ai_config")},
+			keyPair{"C", m.T("key_global_config")},
+			keyPair{"L", m.T("key_login")},
+			keyPair{"?", m.T("key_help")},
+			keyPair{"q", m.T("key_quit")},
+		)
 	}
 
 	innerW := m.width - 2
@@ -1615,7 +2433,6 @@ func (m *Model) renderBottomBar() string {
 		items = append(items, kStr+vStr)
 	}
 
-	// Wrap hotkey items across lines so all options remain 100% visible when window is resized
 	var lines []string
 	curLine := " "
 	for _, item := range items {
@@ -1642,14 +2459,11 @@ func (m *Model) renderBottomBar() string {
 		Render(strings.Join(lines, "\n"))
 }
 
+// renderSidebar renders the full-height single-select Chats window with colored highlights for chats with active AI.
 func (m *Model) renderSidebar(width, totalHeight int) string {
-	chatsH := totalHeight / 2
+	chatsH := totalHeight
 	if chatsH < 6 {
 		chatsH = 6
-	}
-	periodsH := totalHeight - chatsH
-	if periodsH < 6 {
-		periodsH = 6
 	}
 
 	innerW := width - 2
@@ -1657,7 +2471,6 @@ func (m *Model) renderSidebar(width, totalHeight int) string {
 		innerW = 12
 	}
 
-	// 1. Chats Panel (with sliding scroll window so cursor never disappears)
 	chatsBorderCol := colBorder
 	if m.focus == focusChats {
 		chatsBorderCol = colBorderFoc
@@ -1683,26 +2496,43 @@ func (m *Model) renderSidebar(width, totalHeight int) string {
 
 	for i := m.chatScrollOffset; i < len(m.chats) && len(chatLines)-1 < maxChatRows; i++ {
 		c := m.chats[i]
-		checked := "[ ]"
-		if m.selectedChats[c.ChatID] {
-			checked = "[✓]"
+		isSelected := c.ChatID == m.selectedChatID
+		isFocusedRow := m.focus == focusChats && m.chatCursor == i
+		hasAI := m.isChatAIEnabled(c.ChatID)
+
+		selMark := "( )"
+		if isSelected {
+			selMark = "(●)"
 		}
 		cursor := "  "
-		isFocusedRow := m.focus == focusChats && m.chatCursor == i
 		if isFocusedRow {
 			cursor = "▸ "
 		}
+		aiTag := ""
+		if hasAI {
+			aiTag = "[AI] "
+		}
 		cleanTitle := sanitizeTerminalText(c.Title)
-		rawRow := fmt.Sprintf("%s%s %s (%d)", cursor, checked, cleanTitle, c.UnreadCount)
+		rawRow := fmt.Sprintf("%s%s %s%s (%d)", cursor, selMark, aiTag, cleanTitle, c.UnreadCount)
+
 		var formatted string
 		if isFocusedRow {
 			formatted = marqueeSingleLine(rawRow, innerW, m.marqueeTick)
-			formatted = lipgloss.NewStyle().Foreground(colCyan).Bold(true).Background(colHighlight).Width(innerW).Render(formatted)
+			fg := colCyan
+			if hasAI {
+				fg = colPurple
+			}
+			formatted = lipgloss.NewStyle().Foreground(fg).Bold(true).Background(colHighlight).Width(innerW).Render(formatted)
 		} else {
 			formatted = padOrTruncate(rawRow, innerW)
-			if m.selectedChats[c.ChatID] {
-				formatted = lipgloss.NewStyle().Foreground(colText).Render(formatted)
-			} else {
+			switch {
+			case hasAI && isSelected:
+				formatted = lipgloss.NewStyle().Foreground(colPurple).Bold(true).Render(formatted)
+			case hasAI:
+				formatted = lipgloss.NewStyle().Foreground(colPurple).Render(formatted)
+			case isSelected:
+				formatted = lipgloss.NewStyle().Foreground(colGreen).Bold(true).Render(formatted)
+			default:
 				formatted = lipgloss.NewStyle().Foreground(colMuted).Render(formatted)
 			}
 		}
@@ -1712,83 +2542,12 @@ func (m *Model) renderSidebar(width, totalHeight int) string {
 		chatLines = append(chatLines, strings.Repeat(" ", innerW))
 	}
 
-	chatsBox := lipgloss.NewStyle().
+	return lipgloss.NewStyle().
 		Border(lipgloss.NormalBorder()).
 		BorderForeground(chatsBorderCol).
 		Width(innerW).
 		Height(chatsH - 2).
 		Render(strings.Join(chatLines, "\n"))
-
-	// 2. Period Folders Panel (with sliding scroll window + single-line marquee on active selection)
-	periodsBorderCol := colBorder
-	if m.focus == focusPeriods {
-		periodsBorderCol = colBorderFoc
-	}
-	maxPeriodRows := periodsH - 3
-	if maxPeriodRows < 1 {
-		maxPeriodRows = 1
-	}
-
-	if m.periodCursor < m.periodScrollOffset {
-		m.periodScrollOffset = m.periodCursor
-	}
-	if m.periodCursor >= m.periodScrollOffset+maxPeriodRows {
-		m.periodScrollOffset = m.periodCursor - maxPeriodRows + 1
-	}
-	if m.periodScrollOffset < 0 {
-		m.periodScrollOffset = 0
-	}
-
-	periodHdr := m.T("sidebar_periods_hdr", minInt(m.periodCursor+1, len(m.periods)), len(m.periods))
-	var pLines []string
-	pLines = append(pLines, lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render(padOrTruncate(periodHdr, innerW)))
-
-	for i := m.periodScrollOffset; i < len(m.periods) && len(pLines)-1 < maxPeriodRows; i++ {
-		rec := m.periods[i]
-		isSelected := m.periodCursor == i
-		prefix := "  "
-		if isSelected {
-			prefix = "▸ "
-		}
-		shortStart := rec.PeriodStart
-		if len(shortStart) >= 10 {
-			shortStart = shortStart[5:]
-		}
-		shortEnd := rec.PeriodEnd
-		if len(shortEnd) >= 10 {
-			shortEnd = shortEnd[5:]
-		}
-		cleanTitle := sanitizeTerminalText(rec.ChatTitle)
-		fullSingleLine := fmt.Sprintf("%s%s [%s->%s] (%dv %di %dd)",
-			prefix, cleanTitle, shortStart, shortEnd, rec.VoiceCount, rec.ImageCount, rec.DocumentCount)
-
-		var rowRendered string
-		if isSelected {
-			scrolled := marqueeSingleLine(fullSingleLine, innerW, m.marqueeTick)
-			style := lipgloss.NewStyle().Foreground(colGreen).Bold(true).Width(innerW)
-			if m.focus == focusPeriods {
-				style = style.Background(colHighlight)
-			}
-			rowRendered = style.Render(scrolled)
-		} else {
-			rowRendered = lipgloss.NewStyle().
-				Foreground(colMuted).
-				Render(padOrTruncate(fullSingleLine, innerW))
-		}
-		pLines = append(pLines, rowRendered)
-	}
-	for len(pLines) < periodsH-2 {
-		pLines = append(pLines, strings.Repeat(" ", innerW))
-	}
-
-	periodsBox := lipgloss.NewStyle().
-		Border(lipgloss.NormalBorder()).
-		BorderForeground(periodsBorderCol).
-		Width(innerW).
-		Height(periodsH - 2).
-		Render(strings.Join(pLines, "\n"))
-
-	return lipgloss.JoinVertical(lipgloss.Left, chatsBox, periodsBox)
 }
 
 func (m *Model) renderMainPanel(width, height int) string {
@@ -1806,7 +2565,6 @@ func (m *Model) renderMainPanel(width, height int) string {
 		borderCol = colBorderFoc
 	}
 
-	// Render Tab Header (wraps cleanly onto 2 lines when window is resized narrow so all 5 tabs stay visible)
 	tabs := []struct {
 		id    int
 		label string
@@ -1815,7 +2573,6 @@ func (m *Model) renderMainPanel(width, height int) string {
 		{2, m.T("tab_2")},
 		{3, m.T("tab_3")},
 		{4, m.T("tab_4")},
-		{5, m.T("tab_5")},
 	}
 	var tabTokens []string
 	tabTokens = append(tabTokens, lipgloss.NewStyle().Foreground(colText).Bold(true).Render(m.T("tab_details")))
@@ -1846,27 +2603,43 @@ func (m *Model) renderMainPanel(width, height int) string {
 		headerLines = append(headerLines, padOrTruncate(curHdr, innerW))
 	}
 
-	var contentLines []string
-	rec := m.activePeriodRecord()
 	visibleRows := innerH - len(headerLines) - 1
 	if visibleRows < 1 {
 		visibleRows = 1
 	}
 
-	switch m.activeTab {
-	case 1:
-		contentLines = m.renderSummaryTab(rec, innerW)
-	case 2:
-		contentLines = m.renderMediaVaultTab(rec, innerW, visibleRows)
-	case 3:
-		contentLines = m.renderTranscriptTab(rec, innerW)
-	case 4:
-		contentLines = m.renderRePromptTab(rec, innerW)
-	case 5:
-		contentLines = m.renderTraceTab(innerW)
+	if m.activeTab == 1 {
+		liveLines := clampLinesToWidth(m.renderLiveChatTab(innerW, visibleRows), innerW)
+		if len(liveLines) > visibleRows {
+			liveLines = liveLines[:visibleRows]
+		}
+		for len(liveLines) < visibleRows {
+			liveLines = append(liveLines, strings.Repeat(" ", innerW))
+		}
+		allLines := append([]string{}, headerLines...)
+		allLines = append(allLines, strings.Repeat(" ", innerW))
+		allLines = append(allLines, liveLines...)
+		return lipgloss.NewStyle().
+			Border(lipgloss.NormalBorder()).
+			BorderForeground(borderCol).
+			Width(innerW).
+			Height(innerH).
+			Render(strings.Join(allLines, "\n"))
 	}
 
-	// Apply vertical scrolling
+	var contentLines []string
+	rec := m.activePeriodRecord()
+
+	switch m.activeTab {
+	case 2:
+		contentLines = m.renderRePromptTab(rec, innerW)
+	case 3:
+		contentLines = m.renderUnifiedPeriodTab(rec, innerW, visibleRows)
+	case 4:
+		contentLines = m.renderTraceTab(innerW)
+	}
+	contentLines = clampLinesToWidth(contentLines, innerW)
+
 	if m.mainScroll >= len(contentLines) {
 		m.mainScroll = maxInt(0, len(contentLines)-1)
 	}
@@ -1894,9 +2667,372 @@ func (m *Model) renderMainPanel(width, height int) string {
 		Render(strings.Join(allLines, "\n"))
 }
 
-func (m *Model) renderSummaryTab(rec *storage.PeriodSummaryRecord, innerW int) []string {
+// clampLinesToWidth ensures every string element is a single line whose visual width never exceeds maxW,
+// preventing Lipgloss from wrapping any line and overflowing the terminal height.
+func clampLinesToWidth(lines []string, maxW int) []string {
+	if maxW < 1 {
+		maxW = 1
+	}
+	out := make([]string, 0, len(lines))
+	for _, raw := range lines {
+		for _, sub := range strings.Split(raw, "\n") {
+			if lipgloss.Width(sub) > maxW {
+				sub = ansi.Truncate(sub, maxW, "")
+			}
+			out = append(out, sub)
+		}
+	}
+	return out
+}
+
+// splitDateAndTime splits "2026-11-03 15:18" into ("2026-11-03", "15:18").
+func splitDateAndTime(ts string) (string, string) {
+	parts := strings.Fields(strings.TrimSpace(ts))
+	if len(parts) >= 2 {
+		tPart := parts[1]
+		if len(tPart) > 5 {
+			tPart = tPart[:5]
+		}
+		return parts[0], tPart
+	}
+	if len(parts) == 1 {
+		return "", parts[0]
+	}
+	return "", "--:--"
+}
+
+// renderDateSeparator renders a centered muted date divider like " ─────────── 2026-11-03 ─────────── ".
+func renderDateSeparator(dateStr string, innerW int) string {
+	label := " " + dateStr + " "
+	avail := innerW - 4 - lipgloss.Width(label)
+	if avail < 6 {
+		return lipgloss.NewStyle().Foreground(colMuted).Render("  " + dateStr)
+	}
+	left := avail / 2
+	right := avail - left
+	line := "  " + strings.Repeat("─", left) + label + strings.Repeat("─", right)
+	return lipgloss.NewStyle().Foreground(colMuted).Render(line)
+}
+
+// renderLiveChatTab renders Tab 1: real-time message stream + bottom inline compose box.
+func (m *Model) renderLiveChatTab(innerW, visibleRows int) []string {
+	ch := m.activeChat()
+	chatTitle := "Telegram Chat"
+	chatType := "group"
+	if ch != nil {
+		chatTitle = sanitizeTerminalText(ch.Title)
+		chatType = ch.ChatType
+	}
+
+	hdrText := m.T("chat_hdr", chatTitle, chatType, len(m.liveMessages))
+	if cfg, ok := m.activeChatAIConfig(); ok {
+		modeTag := "Draft"
+		if cfg.SendMode == "auto_send" {
+			modeTag = "Auto-Send"
+		}
+		if cfg.AutoReply {
+			hdrText += fmt.Sprintf("  │  [AI: %s • Auto-Reply • %s]", cfg.Skill, modeTag)
+		} else {
+			hdrText += fmt.Sprintf("  │  [AI: %s • Manual('a') • %s]", cfg.Skill, modeTag)
+		}
+	}
+	hdrLine := lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render(padOrTruncate(hdrText, innerW))
+
+	inputBoxLines := m.renderLiveInputBox(chatTitle, innerW)
+	msgViewportH := visibleRows - 2 - len(inputBoxLines)
+	if msgViewportH < 3 {
+		msgViewportH = 3
+	}
+
+	textW := innerW - 12
+	if textW < 16 {
+		textW = 16
+	}
+
+	var msgLines []string
+	selStart := 0
+	selEnd := 0
+
+	if len(m.liveMessages) == 0 {
+		msgLines = append(msgLines, "  "+m.T("chat_empty"))
+	} else {
+		if m.liveMsgCursor < 0 {
+			m.liveMsgCursor = 0
+		}
+		if m.liveMsgCursor >= len(m.liveMessages) {
+			m.liveMsgCursor = len(m.liveMessages) - 1
+		}
+
+		prevDate := ""
+		prevSender := ""
+
+		for idx, lm := range m.liveMessages {
+			isSelected := idx == m.liveMsgCursor
+			msgDate, msgTime := splitDateAndTime(lm.Timestamp)
+			sender := sanitizeTerminalText(lm.Sender)
+			if sender == "" {
+				sender = "Unknown"
+			}
+
+			accentCol := colBlue
+			if lm.IsOutgoing {
+				accentCol = colGreen
+			}
+
+			// 1. Date divider when the calendar day changes
+			dateChanged := msgDate != "" && msgDate != prevDate
+			if dateChanged {
+				if len(msgLines) > 0 {
+					msgLines = append(msgLines, "")
+				}
+				msgLines = append(msgLines, renderDateSeparator(msgDate, innerW))
+				prevDate = msgDate
+				prevSender = ""
+			}
+
+			// 2. Grouped sender header (only shown when sender changes or after a date divider)
+			if sender != prevSender {
+				if len(msgLines) > 0 && !dateChanged {
+					msgLines = append(msgLines, "")
+				}
+				senderLine := "   " + lipgloss.NewStyle().Foreground(accentCol).Bold(true).Render(truncateSingleLine(sender, innerW-4))
+				msgLines = append(msgLines, senderLine)
+				prevSender = sender
+			}
+
+			msgStart := len(msgLines)
+
+			// 3. Wrap message text & media attachments with clean left time column + vertical accent bar
+			var bodyLines []string
+			if strings.TrimSpace(lm.Text) != "" {
+				bodyLines = append(bodyLines, wrapTextBlock(lm.Text, textW)...)
+			}
+			var mediaLineIdx = -1
+			if lm.MediaType != "" {
+				mTag := strings.ToUpper(lm.MediaType)
+				if mTag == "DOCUMENT" {
+					mTag = "DOC"
+				}
+				hint := m.T("chat_media_hint")
+				if lm.CachedPath != "" {
+					hint = m.T("chat_media_cached", filepath.Base(lm.CachedPath))
+				}
+				sizeKB := lm.MediaSize / 1024
+				if sizeKB == 0 && lm.MediaSize > 0 {
+					sizeKB = 1
+				}
+				mediaLine := fmt.Sprintf("📎 [%s] %s (%d KB) %s", mTag, lm.MediaFileName, sizeKB, hint)
+				mediaLineIdx = len(bodyLines)
+				bodyLines = append(bodyLines, truncateSingleLine(mediaLine, textW))
+			}
+			if len(bodyLines) == 0 {
+				bodyLines = append(bodyLines, "(empty message)")
+			}
+
+			for i, bl := range bodyLines {
+				var prefix string
+				timeStr := padOrTruncate(msgTime, 5)
+				if i > 0 {
+					timeStr = "     "
+				}
+				if isSelected {
+					cursorGlyph := "▸ "
+					if i > 0 {
+						cursorGlyph = "  "
+					}
+					prefix = lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render(cursorGlyph+timeStr+" ┃ ")
+				} else {
+					tStyled := lipgloss.NewStyle().Foreground(colMuted).Render("  " + timeStr + " ")
+					barStyled := lipgloss.NewStyle().Foreground(accentCol).Render("│ ")
+					prefix = tStyled + barStyled
+				}
+
+				textCol := colText
+				boldText := false
+				if i == mediaLineIdx {
+					textCol = colYellow
+				}
+				if isSelected {
+					textCol = colCyan
+					boldText = true
+				}
+				styledBody := lipgloss.NewStyle().Foreground(textCol).Bold(boldText).Render(bl)
+				msgLines = append(msgLines, prefix+styledBody)
+			}
+
+			if isSelected {
+				selStart = maxInt(0, msgStart-1)
+				selEnd = len(msgLines)
+			}
+		}
+	}
+
+	if selStart < m.liveScrollOffset {
+		m.liveScrollOffset = selStart
+	}
+	if selEnd > m.liveScrollOffset+msgViewportH {
+		m.liveScrollOffset = selEnd - msgViewportH
+	}
+	if m.liveScrollOffset < 0 {
+		m.liveScrollOffset = 0
+	}
+
+	sliced := msgLines
+	if m.liveScrollOffset < len(sliced) {
+		sliced = sliced[m.liveScrollOffset:]
+	}
+	if len(sliced) > msgViewportH {
+		sliced = sliced[:msgViewportH]
+	}
+	for len(sliced) < msgViewportH {
+		sliced = append(sliced, strings.Repeat(" ", innerW))
+	}
+
+	var out []string
+	out = append(out, hdrLine, strings.Repeat(" ", innerW))
+	out = append(out, sliced...)
+	out = append(out, inputBoxLines...)
+	return out
+}
+
+func (m *Model) renderLiveInputBox(chatTitle string, innerW int) []string {
+	boxW := innerW - 4
+	if boxW < 20 {
+		boxW = 20
+	}
+	borderCol := colBorder
+	var promptHdr string
+	var inputContent string
+
+	if m.chatComposing {
+		borderCol = colGreen
+		promptHdr = " " + lipgloss.NewStyle().Foreground(colGreen).Bold(true).Render(truncateSingleLine(m.T("chat_input_active", chatTitle), boxW))
+		inputContent = lipgloss.NewStyle().Foreground(colText).Render(padOrTruncate(m.chatInputBuffer+"█", boxW-4))
+	} else {
+		idleText := padOrTruncate(m.T("chat_input_idle", chatTitle), boxW-4)
+		inputContent = lipgloss.NewStyle().Foreground(colMuted).Render(idleText)
+	}
+
+	box := lipgloss.NewStyle().
+		Border(lipgloss.NormalBorder()).
+		BorderForeground(borderCol).
+		Padding(0, 1).
+		Width(boxW - 2).
+		Render(inputContent)
+
+	var out []string
+	if promptHdr != "" {
+		out = append(out, promptHdr)
+	}
+	for _, l := range strings.Split(box, "\n") {
+		out = append(out, " "+l)
+	}
+	return out
+}
+
+func renderInteriorCardWithBorder(title string, body string, cardWidth int, titleCol, borderCol lipgloss.Color) []string {
+	innerTextW := cardWidth - 4
+	if innerTextW < 10 {
+		innerTextW = 10
+	}
+
+	wrappedLines := wrapTextBlock(body, innerTextW)
+	var paddedLines []string
+	for _, l := range wrappedLines {
+		padded := padOrTruncate(l, innerTextW)
+		paddedLines = append(paddedLines, renderColorizedCardLine(padded))
+	}
+
+	box := lipgloss.NewStyle().
+		Border(lipgloss.NormalBorder()).
+		BorderForeground(borderCol).
+		Padding(0, 1).
+		Width(cardWidth - 2).
+		Render(strings.Join(paddedLines, "\n"))
+
+	var out []string
+	if strings.TrimSpace(title) != "" {
+		tLine := " " + lipgloss.NewStyle().Foreground(titleCol).Bold(true).Render(truncateSingleLine(title, cardWidth))
+		out = append(out, tLine)
+	}
+	for _, bl := range strings.Split(box, "\n") {
+		out = append(out, " "+bl)
+	}
+	return out
+}
+
+// renderColorizedCardLine highlights ON/ACTIVE status tokens in green and OFF/NOT CONFIGURED status tokens in red
+// while preserving the exact visual width of the padded card line.
+func renderColorizedCardLine(padded string) string {
+	type statusTok struct {
+		token string
+		col   lipgloss.Color
+	}
+	tokens := []statusTok{
+		{"[NOT CONFIGURED]", colRed},
+		{"[НЕ НАСТРОЕН]", colRed},
+		{"[NOT CONNECTED]", colRed},
+		{"[НЕ ПОДКЛЮЧЕН]", colRed},
+		{"[CONNECTED]", colGreen},
+		{"[ПОДКЛЮЧЕН]", colGreen},
+		{"[ACTIVE]", colGreen},
+		{"[АКТИВЕН]", colGreen},
+		{"[RUNNING]", colGreen},
+		{"[ВЫПОЛНЯЕТСЯ]", colGreen},
+		{"[OK]", colGreen},
+		{"[FAIL]", colRed},
+		{"[!]", colRed},
+		{"[OFF]", colRed},
+		{"[ВЫКЛ]", colRed},
+		{"[ON]", colGreen},
+		{"[ВКЛ]", colGreen},
+		{" OFF ", colRed},
+		{" ВЫКЛ ", colRed},
+		{" ON ", colGreen},
+		{" ВКЛ ", colGreen},
+	}
+
+	baseStyle := lipgloss.NewStyle().Foreground(colText)
+	var out strings.Builder
+	rem := padded
+	for len(rem) > 0 {
+		bestIdx := -1
+		var bestTok statusTok
+		for _, st := range tokens {
+			if idx := strings.Index(rem, st.token); idx >= 0 {
+				if bestIdx == -1 || idx < bestIdx {
+					bestIdx = idx
+					bestTok = st
+				}
+			}
+		}
+		if bestIdx < 0 {
+			out.WriteString(baseStyle.Render(rem))
+			break
+		}
+		if bestIdx > 0 {
+			out.WriteString(baseStyle.Render(rem[:bestIdx]))
+		}
+		out.WriteString(lipgloss.NewStyle().Foreground(bestTok.col).Bold(true).Render(bestTok.token))
+		rem = rem[bestIdx+len(bestTok.token):]
+	}
+	return out.String()
+}
+
+// renderUnifiedPeriodTab renders Tab 3: Period Archive Selector + Summary + Media Vault + Transcript collapsed in one view.
+func (m *Model) renderUnifiedPeriodTab(rec *storage.PeriodSummaryRecord, innerW int, visibleRows int) []string {
+	ch := m.activeChat()
+	chatTitle := "Selected Chat"
+	if ch != nil {
+		chatTitle = sanitizeTerminalText(ch.Title)
+	}
+
 	if rec == nil {
-		return []string{m.T("sum_empty")}
+		return []string{
+			lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render(padOrTruncate(m.T("period_tab_hdr", chatTitle, 0, 0, m.periodSpec), innerW)),
+			"",
+			truncateSingleLine(m.T("sum_empty"), innerW),
+		}
 	}
 
 	cardW := innerW - 4
@@ -1905,11 +3041,56 @@ func (m *Model) renderSummaryTab(rec *storage.PeriodSummaryRecord, innerW int) [
 	}
 
 	var out []string
-	title := lipgloss.NewStyle().Foreground(colText).Bold(true).Render(m.T("sum_hdr", rec.ChatTitle))
-	meta := lipgloss.NewStyle().Foreground(colMuted).Render(fmt.Sprintf("   ID: %d  │  Created: %s  │  Model: %s", rec.ChatID, rec.CreatedAt, rec.ModelUsed))
-	out = append(out, truncateSingleLine(title, innerW), truncateSingleLine(meta, innerW), "")
+	out = append(out, lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render(
+		padOrTruncate(m.T("period_tab_hdr", chatTitle, minInt(m.periodCursor+1, len(m.periods)), len(m.periods), m.periodSpec), innerW),
+	), "")
 
-	// Status & Accounting Card (Pure ASCII badges so borders never shift!)
+	// Period Archive Selector Card for the active chat
+	if len(m.periods) > 0 {
+		var pRows []string
+		for idx, p := range m.periods {
+			prefix := "  "
+			if idx == m.periodCursor {
+				prefix = "▸ "
+			}
+			line := fmt.Sprintf("%s[%d/%d] %s -> %s (%s)  │  %d msgs (%dv %di %dd)  │  Skill: %s",
+				prefix, idx+1, len(m.periods), p.PeriodStart, p.PeriodEnd, p.PeriodSpec,
+				p.TotalMessages, p.VoiceCount, p.ImageCount, p.DocumentCount, p.Skill)
+			pRows = append(pRows, line)
+		}
+		out = append(out, renderInteriorCard(m.T("period_selector_card", chatTitle), strings.Join(pRows, "\n"), cardW, colPurple)...)
+		out = append(out, "")
+	}
+
+	// Section 1: Period Summary Cards
+	out = append(out, m.renderSummaryTab(rec, innerW)...)
+	out = append(out, "")
+
+	// Section 2: Media Vault
+	out = append(out, m.renderMediaVaultSection(rec, innerW)...)
+	out = append(out, "")
+
+	// Section 3: Chronological Message & Voice Transcript
+	out = append(out, m.renderTranscriptTab(rec, innerW)...)
+
+	return out
+}
+
+func (m *Model) renderSummaryTab(rec *storage.PeriodSummaryRecord, innerW int) []string {
+	if rec == nil {
+		return []string{truncateSingleLine(m.T("sum_empty"), innerW)}
+	}
+
+	cardW := innerW - 4
+	if cardW < 20 {
+		cardW = 20
+	}
+
+	var out []string
+	title := lipgloss.NewStyle().Foreground(colText).Bold(true).Render(truncateSingleLine(m.T("sum_hdr", rec.ChatTitle), innerW))
+	meta := lipgloss.NewStyle().Foreground(colMuted).Render(truncateSingleLine(fmt.Sprintf("   ID: %d  │  Created: %s  │  Model: %s", rec.ChatID, rec.CreatedAt, rec.ModelUsed), innerW))
+	out = append(out, title, meta, "")
+
 	statusBody := strings.Join([]string{
 		m.T("sum_status_label", rec.Status),
 		m.T("sum_period_range", rec.PeriodStart, rec.PeriodEnd, rec.PeriodSpec),
@@ -1945,11 +3126,10 @@ func (m *Model) renderSummaryTab(rec *storage.PeriodSummaryRecord, innerW int) [
 	return out
 }
 
-func (m *Model) renderMediaVaultTab(rec *storage.PeriodSummaryRecord, innerW int, visibleRows int) []string {
+func (m *Model) renderMediaVaultSection(rec *storage.PeriodSummaryRecord, innerW int) []string {
 	if rec == nil || len(rec.MediaItems) == 0 {
-		return []string{m.T("media_empty")}
+		return []string{truncateSingleLine(m.T("media_empty"), innerW)}
 	}
-
 	if m.mediaCursor < 0 {
 		m.mediaCursor = 0
 	}
@@ -1960,11 +3140,8 @@ func (m *Model) renderMediaVaultTab(rec *storage.PeriodSummaryRecord, innerW int
 	cardW := innerW - 4
 	var out []string
 	out = append(out, lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render(
-		m.T("media_hdr", m.mediaCursor+1, len(rec.MediaItems), rec.FolderPath),
+		padOrTruncate(m.T("media_hdr", m.mediaCursor+1, len(rec.MediaItems), rec.FolderPath), innerW),
 	), "")
-
-	selStart := 0
-	selEnd := 0
 
 	for idx, it := range rec.MediaItems {
 		tag := "[" + strings.ToUpper(it.MediaType) + "]"
@@ -1982,61 +3159,93 @@ func (m *Model) renderMediaVaultTab(rec *storage.PeriodSummaryRecord, innerW int
 		aiCapture := formatAICaptureText(it.AIText, m.cfg.Language)
 		body := m.T("media_file_lbl", it.FilePath, aiCapture)
 		cardLines := renderInteriorCard(header, body, cardW, bCol)
-		if idx == m.mediaCursor {
-			selStart = len(out)
-			selEnd = len(out) + len(cardLines)
-		}
 		out = append(out, cardLines...)
 		out = append(out, "")
 	}
-
-	// Keep the currently selected media card visible in the viewport as the user scrolls with j/k
-	if m.mediaCursor == 0 {
-		m.mainScroll = 0
-	} else {
-		if selStart < m.mainScroll {
-			m.mainScroll = selStart
-		}
-		if selEnd >= m.mainScroll+visibleRows {
-			m.mainScroll = selEnd - visibleRows + 1
-		}
-		if m.mainScroll < 0 {
-			m.mainScroll = 0
-		}
-	}
-
 	return out
+}
+
+func (m *Model) renderMediaVaultTab(rec *storage.PeriodSummaryRecord, innerW int, visibleRows int) []string {
+	return m.renderMediaVaultSection(rec, innerW)
 }
 
 func (m *Model) renderTranscriptTab(rec *storage.PeriodSummaryRecord, innerW int) []string {
 	if rec == nil || len(rec.Messages) == 0 {
-		return []string{m.T("transcript_empty")}
+		return []string{truncateSingleLine(m.T("transcript_empty"), innerW)}
 	}
-	cardW := innerW - 4
+	textW := innerW - 12
+	if textW < 16 {
+		textW = 16
+	}
 	var out []string
 	out = append(out, lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render(
-		m.T("transcript_hdr", len(rec.Messages)),
+		padOrTruncate(m.T("transcript_hdr", len(rec.Messages)), innerW),
 	), "")
 
+	prevDate := ""
+	prevSender := ""
 	for _, msg := range rec.Messages {
-		hdr := fmt.Sprintf("[#%d] %s  •  %s", msg.MessageID, msg.Sender, msg.Timestamp)
-		var lines []string
+		msgDate, msgTime := splitDateAndTime(msg.Timestamp)
+		sender := sanitizeTerminalText(msg.Sender)
+		if sender == "" {
+			sender = "Unknown"
+		}
+		accentCol := colBlue
+		if sender == "You" {
+			accentCol = colGreen
+		}
+
+		dateChanged := msgDate != "" && msgDate != prevDate
+		if dateChanged {
+			if len(out) > 2 {
+				out = append(out, "")
+			}
+			out = append(out, renderDateSeparator(msgDate, innerW))
+			prevDate = msgDate
+			prevSender = ""
+		}
+
+		if sender != prevSender {
+			if len(out) > 2 && !dateChanged {
+				out = append(out, "")
+			}
+			senderLine := "   " + lipgloss.NewStyle().Foreground(accentCol).Bold(true).Render(truncateSingleLine(sender, innerW-4))
+			out = append(out, senderLine)
+			prevSender = sender
+		}
+
+		var bodyLines []string
 		if strings.TrimSpace(msg.Text) != "" {
-			lines = append(lines, msg.Text)
+			bodyLines = append(bodyLines, wrapTextBlock(msg.Text, textW)...)
 		}
 		if msg.MediaType == "voice" || msg.VoiceTranscript != "" {
 			aiCap := formatAICaptureText(msg.VoiceTranscript, m.cfg.Language)
-			lines = append(lines, fmt.Sprintf("[VOICE - %s]: %s", msg.MediaFile, aiCap))
+			bodyLines = append(bodyLines, wrapTextBlock(fmt.Sprintf("📎 [VOICE - %s]: %s", msg.MediaFile, aiCap), textW)...)
 		} else if msg.MediaType != "" || msg.MediaAnalysis != "" {
 			mTag := strings.ToUpper(msg.MediaType)
 			if mTag == "DOCUMENT" {
 				mTag = "DOC"
 			}
 			aiCap := formatAICaptureText(msg.MediaAnalysis, m.cfg.Language)
-			lines = append(lines, fmt.Sprintf("[%s - %s]: %s", mTag, msg.MediaFile, aiCap))
+			bodyLines = append(bodyLines, wrapTextBlock(fmt.Sprintf("📎 [%s - %s]: %s", mTag, msg.MediaFile, aiCap), textW)...)
 		}
-		out = append(out, renderInteriorCard(hdr, strings.Join(lines, "\n"), cardW, colCyan)...)
-		out = append(out, "")
+		if len(bodyLines) == 0 {
+			bodyLines = append(bodyLines, "(empty message)")
+		}
+
+		for i, bl := range bodyLines {
+			timeStr := padOrTruncate(msgTime, 5)
+			if i > 0 {
+				timeStr = "     "
+			}
+			tStyled := lipgloss.NewStyle().Foreground(colMuted).Render("  " + timeStr + " ")
+			barStyled := lipgloss.NewStyle().Foreground(accentCol).Render("│ ")
+			textCol := colText
+			if strings.HasPrefix(bl, "📎 [") {
+				textCol = colYellow
+			}
+			out = append(out, tStyled+barStyled+lipgloss.NewStyle().Foreground(textCol).Render(bl))
+		}
 	}
 	return out
 }
@@ -2058,56 +3267,217 @@ func formatAICaptureText(raw string, lang string) string {
 	return s
 }
 
+func (m *Model) scrollTab2ToBox(boxIdx int) {
+	if boxIdx < 0 || boxIdx >= len(m.tab2BoxBounds) {
+		return
+	}
+	if boxIdx == 0 {
+		m.mainScroll = 0
+		return
+	}
+	bStart := m.tab2BoxBounds[boxIdx][0]
+	bEnd := m.tab2BoxBounds[boxIdx][1]
+	if bEnd <= bStart {
+		return
+	}
+	visibleRows := maxInt(6, m.height-8)
+	if bStart < m.mainScroll {
+		m.mainScroll = maxInt(0, bStart-1)
+	} else if bEnd > m.mainScroll+visibleRows {
+		m.mainScroll = maxInt(0, bEnd-visibleRows+1)
+	}
+}
+
+func (m *Model) scrollTab2ToSkill() {
+	bStart := m.tab2BoxBounds[3][0]
+	if bStart <= 0 {
+		return
+	}
+	visibleRows := maxInt(6, m.height-8)
+	skillLine := bStart + 2 + m.skillCursor
+	if skillLine < m.mainScroll+1 {
+		m.mainScroll = maxInt(0, skillLine-2)
+	} else if skillLine >= m.mainScroll+visibleRows-2 {
+		m.mainScroll = maxInt(0, skillLine-visibleRows+3)
+	}
+}
+
+func (m *Model) renderTab2Box(boxIdx int, title string, body string, cardW int, defaultTitleCol lipgloss.Color) []string {
+	isSelectedBox := m.focus == focusMain && m.activeTab == 2 && m.tab2BoxCursor == boxIdx
+	isEnteredBox := isSelectedBox && m.tab2BoxEntered
+
+	borderCol := colBorder
+	titleCol := defaultTitleCol
+	displayTitle := "  " + title
+
+	if isEnteredBox {
+		borderCol = colGreen
+		titleCol = colGreen
+		if m.cfg.IsRussian() {
+			displayTitle = "▼ " + title + " [АКТИВНО — j/k:Выбор, Enter:Применить, Esc:Назад]"
+		} else {
+			displayTitle = "▼ " + title + " [ACTIVE — j/k:Select, Enter:Apply, Esc:Back]"
+		}
+	} else if isSelectedBox {
+		borderCol = colBorderFoc
+		titleCol = colCyan
+		if m.cfg.IsRussian() {
+			displayTitle = "▸ " + title + " [Enter: Открыть]"
+		} else {
+			displayTitle = "▸ " + title + " [Enter: Open]"
+		}
+	}
+
+	return renderInteriorCardWithBorder(displayTitle, body, cardW, titleCol, borderCol)
+}
+
+// renderRePromptTab renders Tab 2: Per-Chat AI Configuration & Skills Library with 2-level box navigation.
 func (m *Model) renderRePromptTab(rec *storage.PeriodSummaryRecord, innerW int) []string {
 	cardW := innerW - 4
 	if cardW < 20 {
 		cardW = 20
 	}
 	var out []string
-	out = append(out, lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render(m.T("skills_tab_hdr")), "")
+	out = append(out, lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render(padOrTruncate(m.T("skills_tab_hdr"), innerW)), "")
 
-	// 1. Current AI Configuration Card (Compact)
-	cliPath := m.cfg.AgyCLIBin()
-	apiStatus := "[NOT CONNECTED] agy CLI not found — press 'c'"
+	ch := m.activeChat()
+	chatTitle := "Selected Chat"
+	if ch != nil {
+		chatTitle = sanitizeTerminalText(ch.Title)
+	}
+
+	// Box 0 (Top): AI Actions & Shortcuts Card
+	var actionsBody string
 	if m.cfg.IsRussian() {
-		apiStatus = "[НЕ ПОДКЛЮЧЕН] agy CLI не найден — нажмите 'c'"
+		actionsBody = strings.Join([]string{
+			"Навыки и архив чата:",
+			"    [Enter] Войти в выбранный блок / применить действие (Esc — выйти из блока)",
+			"    [x]     Отключить ИИ для текущего чата и сбросить настройки",
+			"    [v / e] Просмотр навыка (v) или редактирование SKILL.md в $EDITOR (e)",
+			"    [n / r] Создать новый навык (n) или запустить ИИ-анализ периода (r)",
+			"Управление живым чатом ИИ:",
+			"    [a]     Автоответ ИИ ([ВКЛ] / [ВЫКЛ]) на входящие сообщения в чате",
+			"    [s]     Режим отправки ИИ: В черновик поля ввода (Enter) или Сразу в чат",
+			"    [A]     Сгенерировать ответ ИИ сейчас (во вкладке 1 — клавиша 'a')",
+			"    [m]     Разовая команда ИИ (запуск / дополнение / стоп)",
+		}, "\n")
+	} else {
+		actionsBody = strings.Join([]string{
+			"Skills & Period Archive:",
+			"    [Enter] Enter highlighted box / apply option (Esc to exit back to boxes)",
+			"    [x]     Disable AI for selected chat & clear settings",
+			"    [v / e] Preview skill prompt (v) or edit SKILL.md in $EDITOR (e)",
+			"    [n / r] Create new skill (n) or run period archive analysis (r)",
+			"Live Chat AI Control:",
+			"    [a]     Toggle AI Auto-Reply ([ON] / [OFF]) for incoming messages",
+			"    [s]     Toggle AI Send Mode (Draft to Compose Box vs Auto-Send)",
+			"    [A]     Generate AI reply right now (or press 'a' in Tab 1 Live Chat)",
+			"    [m]     Single-Shot AI instruction (run / append / stop)",
+		}, "\n")
+	}
+	b0Start := len(out)
+	out = append(out, m.renderTab2Box(0, m.T("skills_card_actions"), actionsBody, cardW, colPurple)...)
+	m.tab2BoxBounds[0] = [2]int{b0Start, len(out)}
+	out = append(out, "")
+
+	// Box 1: Per-Chat AI Instructions Card
+	chatCfg, chatAIEnabled := m.activeChatAIConfig()
+	runNotesText := strings.TrimSpace(chatCfg.Notes)
+	if ch != nil {
+		r := m.getChatSingleShotRunner(ch.ChatID)
+		r.mu.Lock()
+		if r.running {
+			if m.cfg.IsRussian() {
+				runNotesText = fmt.Sprintf("[ВКЛ] [ВЫПОЛНЯЕТСЯ] %s", r.currentInstr)
+			} else {
+				runNotesText = fmt.Sprintf("[ON] [RUNNING] %s", r.currentInstr)
+			}
+			if len(r.queue) > 0 {
+				runNotesText += fmt.Sprintf(" (+%d queued)", len(r.queue))
+			}
+		} else if len(r.history) > 0 {
+			if m.cfg.IsRussian() {
+				runNotesText = fmt.Sprintf("[ВКЛ] %s", strings.Join(r.history, " + "))
+			} else {
+				runNotesText = fmt.Sprintf("[ON] %s", strings.Join(r.history, " + "))
+			}
+		}
+		r.mu.Unlock()
+	}
+	if runNotesText == "" {
+		runNotesText = m.T("skills_notes_none")
+	}
+	autoReplyLabel := m.T("skills_autoreply_off")
+	if chatCfg.AutoReply {
+		autoReplyLabel = m.T("skills_autoreply_on")
+	}
+	sendModeLabel := m.T("skills_sendmode_draft")
+	if chatCfg.SendMode == "auto_send" {
+		sendModeLabel = m.T("skills_sendmode_auto")
+	}
+	var chatAIBody string
+	var chatAICol lipgloss.Color
+	if chatAIEnabled {
+		chatAICol = colPurple
+		chatAIBody = m.T("skills_chat_enabled", chatCfg.Skill, chatCfg.PeriodSpec, autoReplyLabel, sendModeLabel, runNotesText)
+	} else {
+		chatAICol = colYellow
+		chatAIBody = m.T("skills_chat_disabled", config.DefaultSkillName, m.periodSpec)
+	}
+	if m.tab2BoxEntered && m.tab2BoxCursor == 1 {
+		chatAIBody = highlightBox1EnteredOption(chatAIBody, m.tab2ChatOptCursor)
+	}
+	b1Start := len(out)
+	out = append(out, m.renderTab2Box(1, m.T("skills_card_chat_ai", chatTitle), chatAIBody, cardW, chatAICol)...)
+	m.tab2BoxBounds[1] = [2]int{b1Start, len(out)}
+	out = append(out, "")
+
+	// Box 2: Common AI Engine Configuration Card
+	cliPath := m.cfg.AgyCLIBin()
+	apiStatus := "[OFF] [NOT CONNECTED] agy CLI not found — press 'c'"
+	if m.cfg.IsRussian() {
+		apiStatus = "[ВЫКЛ] [НЕ ПОДКЛЮЧЕН] agy CLI не найден — нажмите 'c'"
 	}
 	if cliPath != "" {
 		if m.cfg.IsRussian() {
-			apiStatus = fmt.Sprintf("[ПОДКЛЮЧЕН] %s", cliPath)
+			apiStatus = fmt.Sprintf("[ВКЛ] [ПОДКЛЮЧЕН] %s", cliPath)
 		} else {
-			apiStatus = fmt.Sprintf("[CONNECTED] %s", cliPath)
+			apiStatus = fmt.Sprintf("[ON] [CONNECTED] %s", cliPath)
 		}
 	}
 	modelName := strings.TrimSpace(m.cfg.AgyModel)
 	if modelName == "" {
 		modelName = "auto"
 	}
-	activeSkillLabel := m.activeSkill
-	if activeSkillLabel == "" {
-		activeSkillLabel = config.DefaultSkillName
+	activeSkillLabel := chatCfg.Skill
+	if !chatAIEnabled {
+		activeSkillLabel = config.DefaultSkillName + " (default)"
 	}
 	aiConfigBody := strings.Join([]string{
 		m.T("skills_lbl_engine", apiStatus, m.cfg.ActiveModelLabel(), modelName),
 		m.T("skills_lbl_skill", activeSkillLabel, m.cfg.SkillsDir()),
 		m.T("skills_lbl_diag", m.aiStatusLine),
 	}, "\n")
-	out = append(out, renderInteriorCard(m.T("skills_card_ai_config"), aiConfigBody, cardW, colGreen)...)
+	b2Start := len(out)
+	out = append(out, m.renderTab2Box(2, m.T("skills_card_ai_config"), aiConfigBody, cardW, colGreen)...)
+	m.tab2BoxBounds[2] = [2]int{b2Start, len(out)}
 	out = append(out, "")
 
-	// 2. Skills Catalog Card
+	// Box 3: Skills Library Card (cursor highlight inside only shown when user pressed Enter to enter Box 3)
+	inSkillsBox := m.focus == focusMain && m.activeTab == 2 && m.tab2BoxEntered && m.tab2BoxCursor == 3
 	var skillRows []string
 	if len(m.skillList) == 0 {
 		skillRows = append(skillRows, m.T("skills_empty_lib"))
 	} else {
 		for idx, sk := range m.skillList {
 			prefix := "  "
-			isHovered := idx == m.skillCursor
+			isHovered := inSkillsBox && idx == m.skillCursor
 			if isHovered {
 				prefix = "▸ "
 			}
 			activeBadge := "         "
-			if sk.Name == m.activeSkill && sk.Kind == skills.KindSummary {
+			isChatActiveSkill := chatAIEnabled && sk.Name == chatCfg.Skill && sk.Kind == skills.KindSummary
+			if isChatActiveSkill {
 				activeBadge = m.T("skills_badge_active")
 			}
 			activeBadge = padRightVisual(activeBadge, 10)
@@ -2129,8 +3499,8 @@ func (m *Model) renderRePromptTab(rec *storage.PeriodSummaryRecord, innerW int) 
 			row := fmt.Sprintf("%s%s %s %s %s (%s)", prefix, activeBadge, nameStr, kindBadge, desc, sk.Hash)
 			if isHovered {
 				skillRows = append(skillRows, lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render(row))
-			} else if sk.Name == m.activeSkill && sk.Kind == skills.KindSummary {
-				skillRows = append(skillRows, lipgloss.NewStyle().Foreground(colGreen).Render(row))
+			} else if isChatActiveSkill {
+				skillRows = append(skillRows, lipgloss.NewStyle().Foreground(colPurple).Bold(true).Render(row))
 			} else {
 				skillRows = append(skillRows, lipgloss.NewStyle().Foreground(colText).Render(row))
 			}
@@ -2138,14 +3508,13 @@ func (m *Model) renderRePromptTab(rec *storage.PeriodSummaryRecord, innerW int) 
 	}
 
 	skillsTitle := m.T("skills_card_catalog", minInt(m.skillCursor+1, len(m.skillList)), len(m.skillList))
-	out = append(out, renderInteriorCard(skillsTitle, strings.Join(skillRows, "\n"), cardW, colCyan)...)
+	b3Start := len(out)
+	out = append(out, m.renderTab2Box(3, skillsTitle, strings.Join(skillRows, "\n"), cardW, colCyan)...)
+	m.tab2BoxBounds[3] = [2]int{b3Start, len(out)}
 	out = append(out, "")
 
-	// 3. Selected Period & Run Settings Card
-	runNotesText := strings.TrimSpace(m.runNotes)
-	if runNotesText == "" {
-		runNotesText = m.T("skills_notes_none")
-	}
+	// Box 4: Selected Chat Latest Archive & Run Settings Card
+	b4Start := len(out)
 	if rec != nil {
 		pendingAI := 0
 		transcribedAI := 0
@@ -2164,45 +3533,42 @@ func (m *Model) renderRePromptTab(rec *storage.PeriodSummaryRecord, innerW int) 
 			m.T("skills_period_media", len(rec.MediaItems), transcribedAI, pendingAI),
 			m.T("skills_period_notes", runNotesText),
 		}
-		out = append(out, renderInteriorCard(m.T("skills_card_run"), strings.Join(periodLines, "\n"), cardW, colBlue)...)
+		out = append(out, m.renderTab2Box(4, m.T("skills_card_run"), strings.Join(periodLines, "\n"), cardW, colBlue)...)
 	} else {
 		noPeriodBody := m.T("skills_period_none", runNotesText)
-		out = append(out, renderInteriorCard(m.T("skills_card_run"), noPeriodBody, cardW, colBlue)...)
+		out = append(out, m.renderTab2Box(4, m.T("skills_card_run"), noPeriodBody, cardW, colBlue)...)
 	}
-	out = append(out, "")
-
-	// 4. Actions & Shortcuts Card
-	var actionsBody string
-	if m.cfg.IsRussian() {
-		actionsBody = strings.Join([]string{
-			"[v]     Просмотр навыка во встроенном окне: Полные инструкции и текст промпта",
-			"[Enter] Активировать навык сводки         : Сделать выбранный навык активным для анализа",
-			"[e]     Редактировать навык в $EDITOR     : Открыть SKILL.md в системном редакторе (vim, nano, code)",
-			"[n]     Создать новый навык               : Создать шаблон навыка в .agents/skills/",
-			"[a / m] Изменить заметки для запуска      : Добавить временные инструкции поверх навыка",
-			"[r]     Перезапустить ИИ-обработку        : Повторный анализ медиа и сводка периода",
-			"[c]     Настройка движка ИИ               : Путь к agy CLI и переключение моделей (F2)",
-			"[C]     Глобальные настройки              : Смена языка интерфейса (En/Ru) и параметры",
-		}, "\n")
-	} else {
-		actionsBody = strings.Join([]string{
-			"[v]     Preview Skill in Embedded Window: Full instructions & prompt viewer",
-			"[Enter] Activate Summary Skill          : Set highlighted summary skill as active for parsing",
-			"[e]     Edit Skill in $EDITOR            : Open SKILL.md in system editor (vim, nano, code)",
-			"[n]     Create New Custom Skill          : Scaffold a new skill in .agents/skills/ and edit",
-			"[a / m] Edit Extra Run Notes             : Add temporary per-run instructions on top of skill",
-			"[r]     Re-Run AI Fetching               : Re-analyze media and re-summarize active period",
-			"[c]     Connect / Configure AI Engine    : Configure agy CLI binary and switch models (F2)",
-			"[C]     Global Configuration             : Change interface language (En/Ru) and settings",
-		}, "\n")
-	}
-	out = append(out, renderInteriorCard(m.T("skills_card_actions"), actionsBody, cardW, colPurple)...)
+	m.tab2BoxBounds[4] = [2]int{b4Start, len(out)}
 	return out
+}
+
+func highlightBox1EnteredOption(body string, optIdx int) string {
+	// Indented option lines in Box 1:
+	// line 3: Active Skill value (optIdx 0)
+	// line 5: Auto-Reply (optIdx 1)
+	// line 6: Send Mode (optIdx 2)
+	// line 8: Single-Shot value (optIdx 3)
+	targetLineMap := map[int]int{
+		0: 3,
+		1: 5,
+		2: 6,
+		3: 8,
+	}
+	targetLine, ok := targetLineMap[optIdx]
+	if !ok {
+		return body
+	}
+	lines := strings.Split(body, "\n")
+	if targetLine >= 0 && targetLine < len(lines) {
+		trimmed := strings.TrimPrefix(lines[targetLine], "    ")
+		lines[targetLine] = "  ▸ " + trimmed
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (m *Model) renderTraceTab(innerW int) []string {
 	var out []string
-	out = append(out, lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render(m.T("trace_hdr")), "")
+	out = append(out, lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render(padOrTruncate(m.T("trace_hdr"), innerW)), "")
 	for _, line := range m.traceLogs {
 		out = append(out, "  "+truncateSingleLine(line, innerW-4))
 	}
@@ -2210,33 +3576,7 @@ func (m *Model) renderTraceTab(innerW int) []string {
 }
 
 func renderInteriorCard(title string, body string, cardWidth int, titleCol lipgloss.Color) []string {
-	innerTextW := cardWidth - 4
-	if innerTextW < 10 {
-		innerTextW = 10
-	}
-
-	wrappedLines := wrapTextBlock(body, innerTextW)
-	var paddedLines []string
-	for _, l := range wrappedLines {
-		paddedLines = append(paddedLines, lipgloss.NewStyle().Foreground(colText).Render(padOrTruncate(l, innerTextW)))
-	}
-
-	box := lipgloss.NewStyle().
-		Border(lipgloss.NormalBorder()).
-		BorderForeground(colBorder).
-		Padding(0, 1).
-		Width(cardWidth - 2).
-		Render(strings.Join(paddedLines, "\n"))
-
-	var out []string
-	if strings.TrimSpace(title) != "" {
-		tLine := " " + lipgloss.NewStyle().Foreground(titleCol).Bold(true).Render(truncateSingleLine(title, cardWidth))
-		out = append(out, tLine)
-	}
-	for _, bl := range strings.Split(box, "\n") {
-		out = append(out, " "+bl)
-	}
-	return out
+	return renderInteriorCardWithBorder(title, body, cardWidth, titleCol, colBorder)
 }
 
 func (m *Model) renderModalOverlay() string {
@@ -2255,12 +3595,7 @@ func (m *Model) renderModalOverlay() string {
 			m.T("input_period_foot"),
 		)
 	case modalPrompt:
-		modalBox = m.renderInputModal(
-			m.T("input_notes_title"),
-			m.T("input_notes_sub"),
-			m.inputBuffer,
-			m.T("input_notes_foot"),
-		)
+		modalBox = m.renderSingleShotModal()
 	case modalNewSkill:
 		modalBox = m.renderInputModal(
 			m.T("input_new_skill_title"),
@@ -2332,8 +3667,7 @@ func (m *Model) renderSkillPreviewModal() string {
 		}
 	}
 
-	// Calculate scrolling for modal body
-	maxVisible := innerH - 1 // reserve 1 line for footer
+	maxVisible := innerH - 1
 	if maxVisible < 5 {
 		maxVisible = 5
 	}
@@ -2407,7 +3741,7 @@ func (m *Model) renderLoginFormModal() string {
 		}
 
 		displayVal := val
-		if i == 1 && len(val) > 0 { // Field 1: API Hash masking for privacy & safe streaming
+		if i == 1 && len(val) > 0 {
 			if m.formFocus == 1 {
 				displayVal = strings.Repeat("•", len(val))
 			} else {
@@ -2437,7 +3771,6 @@ func (m *Model) renderLoginFormModal() string {
 		rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top, lbl, " ", fieldBox))
 	}
 
-	// 3-Step Connection Diagnostic Box
 	var diagLines []string
 	for _, cl := range m.connLines {
 		col := colText
@@ -2541,6 +3874,112 @@ func (m *Model) renderLoginQRModal() string {
 		Padding(1, 2).
 		Width(modalW).
 		Render(strings.Join(rows, "\n"))
+}
+
+func (m *Model) renderSingleShotModal() string {
+	modalW := 82
+	if m.width-6 < modalW {
+		modalW = m.width - 6
+	}
+	innerW := modalW - 4
+
+	ch := m.activeChat()
+	chatTitle := "Selected Chat"
+	var isRunning bool
+	var curInstr string
+	var queued []string
+	var history []string
+	if ch != nil {
+		chatTitle = sanitizeTerminalText(ch.Title)
+		r := m.getChatSingleShotRunner(ch.ChatID)
+		r.mu.Lock()
+		isRunning = r.running
+		curInstr = r.currentInstr
+		queued = append([]string{}, r.queue...)
+		history = append([]string{}, r.history...)
+		r.mu.Unlock()
+	}
+
+	var statusLines []string
+	statusBorder := colBorder
+	if isRunning {
+		statusBorder = colYellow
+		if m.cfg.IsRussian() {
+			statusLines = append(statusLines, lipgloss.NewStyle().Foreground(colYellow).Bold(true).Render(
+				fmt.Sprintf("⟳ Статус: [ВЫПОЛНЯЕТСЯ в чате '%s']", chatTitle),
+			))
+			statusLines = append(statusLines, fmt.Sprintf("Активная команда : %s", curInstr))
+			if len(queued) > 0 {
+				statusLines = append(statusLines, fmt.Sprintf("В очереди (%d)    : %s", len(queued), strings.Join(queued, " -> ")))
+			}
+		} else {
+			statusLines = append(statusLines, lipgloss.NewStyle().Foreground(colYellow).Bold(true).Render(
+				fmt.Sprintf("⟳ Status: [RUNNING in '%s']", chatTitle),
+			))
+			statusLines = append(statusLines, fmt.Sprintf("Active Instruction : %s", curInstr))
+			if len(queued) > 0 {
+				statusLines = append(statusLines, fmt.Sprintf("Queued Next (%d)    : %s", len(queued), strings.Join(queued, " -> ")))
+			}
+		}
+	} else {
+		if m.cfg.IsRussian() {
+			statusLines = append(statusLines, lipgloss.NewStyle().Foreground(colGreen).Bold(true).Render(
+				fmt.Sprintf("◉ Статус: [ОЖИДАНИЕ — чат '%s']", chatTitle),
+			))
+			if len(history) > 0 {
+				statusLines = append(statusLines, fmt.Sprintf("Предыдущая команда: %s", strings.Join(history, " + ")))
+			} else {
+				statusLines = append(statusLines, "Нет активных разовых команд для этого чата.")
+			}
+		} else {
+			statusLines = append(statusLines, lipgloss.NewStyle().Foreground(colGreen).Bold(true).Render(
+				fmt.Sprintf("◉ Status: [IDLE — chat '%s']", chatTitle),
+			))
+			if len(history) > 0 {
+				statusLines = append(statusLines, fmt.Sprintf("Previous Instruction: %s", strings.Join(history, " + ")))
+			} else {
+				statusLines = append(statusLines, "No active single-shot instruction running for this chat.")
+			}
+		}
+	}
+
+	var wrappedStatus []string
+	for _, sl := range statusLines {
+		wrappedStatus = append(wrappedStatus, wrapTextBlock(sl, innerW-4)...)
+	}
+	statusBox := lipgloss.NewStyle().
+		Border(lipgloss.NormalBorder()).
+		BorderForeground(statusBorder).
+		Padding(0, 1).
+		Width(innerW - 2).
+		Render(strings.Join(wrappedStatus, "\n"))
+
+	wrappedInput := wrapTextBlock(m.inputBuffer+"█", innerW-4)
+	inputBox := lipgloss.NewStyle().
+		Border(lipgloss.NormalBorder()).
+		BorderForeground(colCyan).
+		Padding(0, 1).
+		Width(innerW - 2).
+		Render(strings.Join(wrappedInput, "\n"))
+
+	lines := []string{
+		lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render(m.T("input_notes_title")),
+		"",
+		statusBox,
+		"",
+		lipgloss.NewStyle().Foreground(colText).Render(m.T("input_notes_sub")),
+		"",
+		inputBox,
+		"",
+		lipgloss.NewStyle().Foreground(colMuted).Render(m.T("input_notes_foot")),
+	}
+
+	return lipgloss.NewStyle().
+		Border(lipgloss.DoubleBorder()).
+		BorderForeground(colBorderFoc).
+		Padding(1, 2).
+		Width(modalW).
+		Render(strings.Join(lines, "\n"))
 }
 
 func (m *Model) renderInputModal(title, subtitle, value, footer string) string {
@@ -2794,7 +4233,6 @@ func (m *Model) renderGlobalConfigModal() string {
 	rows = append(rows, lipgloss.NewStyle().Foreground(colYellow).Bold(true).Render(truncateSingleLine(banner, innerW)))
 	rows = append(rows, "")
 
-	// Language Selector Column
 	langLabel := lipgloss.NewStyle().Foreground(colBlue).Bold(true).Render(m.T("cfg_modal_lang"))
 	rows = append(rows, langLabel)
 
@@ -2822,7 +4260,6 @@ func (m *Model) renderGlobalConfigModal() string {
 	btnRu := ruStyle.Render(ruPrefix + "[2] Ru — Русский (Russian)")
 	rows = append(rows, btnEn, btnRu, "")
 
-	// System Information Card
 	infoLines := []string{
 		m.T("cfg_modal_info_model", m.cfg.ActiveModelLabel()),
 		m.T("cfg_modal_info_period", m.periodSpec),
@@ -2844,7 +4281,6 @@ func (m *Model) renderGlobalConfigModal() string {
 
 	rows = append(rows, infoBox, "")
 
-	// Action buttons
 	btnW := (innerW - 5) / 2
 	if btnW < 24 {
 		btnW = 24
@@ -2875,46 +4311,40 @@ func (m *Model) renderHelpModal() string {
 
 	if m.cfg.IsRussian() {
 		lines = append(lines,
+			"  1 - 4               : Вкладки (1:Чат, 2:ИИ и навыки, 3:Архив периода, 4:Логи)",
+			"  Tab / h / l         : Переключение фокуса между списком чатов и главным окном",
 			"  j / k или Вверх/Вниз: Перемещение курсора / прокрутка активного окна",
-			"  J / K               : Быстрая прокрутка окна вниз / вверх",
-			"  g / G               : В начало (g) или в конец (G) списка / окна",
-			"  Ctrl+d / Ctrl+u     : Прокрутка на полстраницы вниз / вверх",
-			"  h / l / Tab         : Переключение фокуса (Чаты, Папки периодов, Детали)",
-			"  1 - 5               : Переключение вкладок (Сводка, Медиа, Стенограмма, Навыки, Логи)",
-			"  Space / a           : Выбор чата (Space) / выбрать все (a)",
-			"  s / Enter           : Запуск анализа выбранных чатов (или выбор навыка во вкл. 4)",
-			"  d / x               : Удалить выбранную папку периода (с подтверждением)",
-			"  L (Shift+L)         : Диагностика MTProto и вход по QR-коду с телефона",
-			"  c                   : Настройка и тестирование движка ИИ (Antigravity CLI — agy)",
-			"  C (Shift+C)         : Глобальные настройки (выбор языка En/Ru и параметры)",
-			"  e                   : Открыть выбранный навык в $EDITOR (вкл. 4)",
-			"  n                   : Создать новый навык в .agents/skills/ (вкл. 4)",
-			"  a / m               : Редактировать дополнительные заметки для сводки",
-			"  r                   : Перезапустить ИИ-обработку (медиа и сводка периода)",
-			"  p                   : Настройка окна периода (по умолчанию 1m = 1 месяц)",
-			"  o / v               : Открыть Finder (o) или Просмотр файла/навыка (v)",
+			"  g / G, Ctrl+d/Ctrl+u: Быстрая навигация по списку сообщений или архиву",
+			"  Enter / Space (Чаты): Открыть выбранный чат (только 1 активный чат)",
+			"  i / Enter (Вкл. 1)  : Написать сообщение в чат (Enter отправить, Esc отмена)",
+			"  v (Вкл. 1 / 2 / 3)  : Прослушать голос / открыть медиа (QuickLook) / навык",
+			"  Enter (Вкл. 2)      : Включить выбранный ИИ-навык для текущего чата ([AI])",
+			"  x (Вкл. 2)          : Отключить ИИ-инструкции для текущего чата",
+			"  m (Вкл. 2 / 3)      : Изменить персональные ИИ-заметки для текущего чата",
+			"  e / n (Вкл. 2)      : Редактировать навык в $EDITOR (e) или создать новый (n)",
+			"  r (Вкл. 1 / 2 / 3)  : Обновить чат (Вкл. 1) или запустить ИИ-анализ (Вкл. 2/3)",
+			"  p / [ / ] (Вкл. 3)  : Период анализа (p) и переключение архивов чата ([ / ])",
+			"  o / d (Вкл. 3)      : Открыть архив в Finder (o) или удалить архив (d)",
+			"  c / C / L           : ИИ-движок (c), Настройки языка (C), Вход по QR (L)",
 			"  q / Esc             : Выход или закрытие модального окна",
 		)
 	} else {
 		lines = append(lines,
+			"  1 - 4               : Switch tabs (1:Live Chat, 2:AI & Skills, 3:Period Archive, 4:Trace)",
+			"  Tab / h / l         : Switch focus between Chats sidebar and Main window",
 			"  j / k or Up/Dn      : Move cursor down / up or scroll active view",
-			"  J / K               : Fast scroll view down / up",
-			"  g / G               : Jump to top (g) or bottom (G) of active list/view",
-			"  Ctrl+d / Ctrl+u     : Half-page down / half-page up",
-			"  h / l / Tab         : Move focus left / right between Chats, Period Folders, and Details",
-			"  1 - 5               : Switch views (Summary, Media Vault, Transcript, Skills & Re-Run, Trace)",
-			"  Space / a           : Toggle chat selection (a = select/deselect all in chats view)",
-			"  s / Enter           : Start parsing & summarizing selected chats (or activate skill in Tab 4)",
-			"  d / x               : Delete selected Period Folder (opens confirmation alert)",
-			"  L (Shift+L)         : Open MTProto Connection Test & Phone QR Login modal",
-			"  c                   : Connect & Configure AI Engine (Antigravity CLI — agy)",
-			"  C (Shift+C)         : Global Configuration (Language En/Ru and system preferences)",
-			"  e                   : Open selected skill in $EDITOR (Tab 4)",
-			"  n                   : Create a new custom skill in .agents/skills/ (Tab 4)",
-			"  a / m               : Edit extra run notes / instructions for summarization",
-			"  r                   : Re-run AI fetching via active skill (transcribe media & summarize)",
-			"  p                   : Configure period window (default 1m = 1 month)",
-			"  o / v               : Open Finder (o) or QuickLook / Preview skill in TUI (v)",
+			"  g / G, Ctrl+d/Ctrl+u: Jump to top/bottom or half-page scroll",
+			"  Enter / Space (Chat): Select & open chat in Tab 1 (single-chat selection)",
+			"  i / Enter (Tab 1)   : Compose message in live chat (Enter to send, Esc to cancel)",
+			"  v (Tab 1 / 2 / 3)   : Play voice / QuickLook media on-demand / Preview skill",
+			"  Enter (Tab 2)       : Enable highlighted summary skill for active chat ([AI])",
+			"  x (Tab 2)           : Disable/clear AI instructions for active chat",
+			"  m (Tab 2 / 3)       : Edit per-chat AI notes / instructions",
+			"  e / n (Tab 2)       : Edit skill in $EDITOR (e) or create new skill (n)",
+			"  r (Tab 1 / 2 / 3)   : Refresh live chat (Tab 1) or Run AI period parse (Tab 2/3)",
+			"  p / [ / ] (Tab 3)   : Set period window (p) & cycle chat's saved archives ([ / ])",
+			"  o / d (Tab 3)       : Open archive in Finder (o) or delete archive (d)",
+			"  c / C / L           : AI Engine config (c), Global settings (C), QR Login (L)",
 			"  q / Esc             : Quit or close modal",
 		)
 	}
@@ -2934,12 +4364,9 @@ func padRightVisual(s string, width int) string {
 	return s
 }
 
-// String Width & Marquee Helpers (Rune-safe, single-line strict)
 func sanitizeTerminalText(s string) string {
 	var b strings.Builder
 	for _, r := range s {
-		// Strip variation selectors, zero-width joiners, and regional indicator flag symbols
-		// that have ambiguous cell widths in macOS Terminal.app and shift box borders
 		if r == '\uFE0F' || r == '\uFE0E' || r == '\u200D' || (r >= 0x1F1E6 && r <= 0x1F1FF) {
 			continue
 		}
@@ -3011,32 +4438,46 @@ func wrapTextBlock(text string, width int) []string {
 			result = append(result, "")
 			continue
 		}
+		// Preserve leading indentation (e.g. "    " 4-space indented list items)
+		leadSpaces := 0
+		for _, ch := range para {
+			if ch == ' ' {
+				leadSpaces++
+			} else {
+				break
+			}
+		}
+		if leadSpaces > width/2 {
+			leadSpaces = 0
+		}
+		indentPrefix := strings.Repeat(" ", leadSpaces)
+		contIndent := indentPrefix
+
 		words := strings.Fields(para)
 		if len(words) == 0 {
 			result = append(result, "")
 			continue
 		}
-		cur := words[0]
+		cur := indentPrefix + words[0]
 		for _, w := range words[1:] {
 			if lipgloss.Width(cur)+1+lipgloss.Width(w) <= width {
 				cur += " " + w
 			} else {
-				// If a single word/path is longer than width, split it cleanly
 				for lipgloss.Width(cur) > width {
 					r := []rune(cur)
 					cut := minInt(len(r), width)
 					result = append(result, string(r[:cut]))
-					cur = string(r[cut:])
+					cur = contIndent + string(r[cut:])
 				}
 				result = append(result, cur)
-				cur = w
+				cur = contIndent + w
 			}
 		}
 		for lipgloss.Width(cur) > width {
 			r := []rune(cur)
 			cut := minInt(len(r), width)
 			result = append(result, string(r[:cut]))
-			cur = string(r[cut:])
+			cur = contIndent + string(r[cut:])
 		}
 		result = append(result, cur)
 	}
@@ -3076,12 +4517,10 @@ func (m *Model) SetGlobalConfigModalForCapture(langIdx int) {
 
 // SetSkillPreviewModalForCapture configures the model to display the Skill Preview modal.
 func (m *Model) SetSkillPreviewModalForCapture(skillIdx int) {
-	m.activeTab = 4
+	m.activeTab = 2
 	if skillIdx >= 0 && skillIdx < len(m.skillList) {
 		m.skillCursor = skillIdx
 	}
 	m.previewScroll = 0
 	m.activeModal = modalSkillPreview
 }
-
-
