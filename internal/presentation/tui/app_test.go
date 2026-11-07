@@ -6,10 +6,10 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"telepilot/internal/ai"
-	"telepilot/internal/config"
-	"telepilot/internal/mtproto"
-	"telepilot/internal/storage"
+	"telepilot/internal/domain/ai"
+	"telepilot/internal/domain/config"
+	"telepilot/internal/domain/storage"
+	"telepilot/internal/network/mtproto"
 )
 
 func newTestModel(t *testing.T, lang string) *Model {
@@ -562,6 +562,3 @@ func TestSingleShotReplaceVsAppendAndCancel(t *testing.T) {
 	}
 	r.mu.Unlock()
 }
-
-
-

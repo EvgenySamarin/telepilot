@@ -10,12 +10,12 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"telepilot/internal/ai"
-	"telepilot/internal/config"
-	"telepilot/internal/mtproto"
-	"telepilot/internal/skills"
-	"telepilot/internal/storage"
-	"telepilot/internal/tui"
+	"telepilot/internal/domain/ai"
+	"telepilot/internal/domain/config"
+	"telepilot/internal/domain/skills"
+	"telepilot/internal/domain/storage"
+	"telepilot/internal/network/mtproto"
+	"telepilot/internal/presentation/tui"
 )
 
 func main() {
@@ -156,4 +156,3 @@ func runCLISummary(cfg *config.AppConfig, mtSvc *mtproto.Service, target string)
 	}
 	fmt.Println("\n" + storage.BuildSummaryMarkdown(*rec))
 }
-

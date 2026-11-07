@@ -19,7 +19,7 @@ mkdir -p "$PROJECT_DIR/bin"
 mkdir -p "$BIN_DIR"
 
 cd "$PROJECT_DIR"
-go build -o "$PROJECT_DIR/bin/tgp" ./cmd/tgp
+go build -o "$PROJECT_DIR/bin/tgp" .
 cp "$PROJECT_DIR/bin/tgp" "$PROJECT_DIR/bin/telepilot"
 
 create_launcher() {

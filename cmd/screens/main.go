@@ -13,12 +13,12 @@ import (
 	"github.com/charmbracelet/x/cellbuf"
 	"github.com/muesli/termenv"
 
-	"telepilot/internal/ai"
-	"telepilot/internal/config"
-	"telepilot/internal/mtproto"
-	"telepilot/internal/skills"
-	"telepilot/internal/storage"
-	"telepilot/internal/tui"
+	"telepilot/internal/domain/ai"
+	"telepilot/internal/domain/config"
+	"telepilot/internal/domain/skills"
+	"telepilot/internal/domain/storage"
+	"telepilot/internal/network/mtproto"
+	"telepilot/internal/presentation/tui"
 )
 
 func hexColor(c ansi.Color, defaultHex string) string {
@@ -324,7 +324,6 @@ func main() {
 		view := m.View()
 		saveScreen(view, cols, rows, "telepilot — In-TUI Skill Preview & Editor ($EDITOR Integration)", "skill_editor_preview", assetsDir)
 	}
-
 
 	fmt.Println("\nAll screenshots generated successfully in assets/!")
 }

@@ -69,4 +69,3 @@ func TestConfigLanguageDefaultAndSave(t *testing.T) {
 		t.Errorf("loaded.IsRussian() should be false")
 	}
 }
-

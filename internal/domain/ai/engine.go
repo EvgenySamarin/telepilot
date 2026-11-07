@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"telepilot/internal/config"
-	"telepilot/internal/storage"
+	"telepilot/internal/domain/config"
+	"telepilot/internal/domain/storage"
 )
 
 type Engine struct {
@@ -271,6 +271,3 @@ func parseSingleShotActions(raw string) []SingleShotAction {
 	}
 	return []SingleShotAction{{Text: clean, DelaySeconds: 0}}
 }
-
-
-

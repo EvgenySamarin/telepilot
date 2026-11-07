@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"telepilot/internal/config"
-	"telepilot/internal/storage"
+	"telepilot/internal/domain/config"
+	"telepilot/internal/domain/storage"
 )
 
 func TestSkillsFollowPreferredLanguage(t *testing.T) {
@@ -72,4 +72,3 @@ func TestSkillsFollowPreferredLanguage(t *testing.T) {
 		t.Errorf("expected Russian media insights, got: %s", resRu.VoiceMediaInsights)
 	}
 }
-

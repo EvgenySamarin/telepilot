@@ -114,4 +114,3 @@ func TestCreateSkill(t *testing.T) {
 		t.Errorf("expected kind %q, got %q", KindSummary, sk.Kind)
 	}
 }
-

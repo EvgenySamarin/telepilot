@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"telepilot/internal/config"
-	"telepilot/internal/skills"
-	"telepilot/internal/storage"
+	"telepilot/internal/domain/config"
+	"telepilot/internal/domain/skills"
+	"telepilot/internal/domain/storage"
 )
 
 // PendingText marks media that still needs AI analysis.
