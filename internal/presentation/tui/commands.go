@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -12,6 +14,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"telepilot/internal/domain/config"
+	"telepilot/internal/domain/skills"
 	"telepilot/internal/domain/storage"
 )
 
@@ -62,6 +65,110 @@ func openEditorCmd(filePath string) tea.Cmd {
 	return tea.ExecProcess(cmd, func(err error) tea.Msg {
 		return skillEditedMsg{path: filePath, err: err}
 	})
+}
+
+func isMacOS() bool {
+	return runtime.GOOS == "darwin"
+}
+
+func (m *Model) openSelectedSkillInFinder() {
+	_ = os.MkdirAll(m.cfg.SkillsDir(), 0o755)
+	if len(m.skillList) > 0 {
+		if m.skillCursor < 0 || m.skillCursor >= len(m.skillList) {
+			m.skillCursor = 0
+		}
+		sk := m.skillList[m.skillCursor]
+		if isMacOS() {
+			_ = exec.Command("open", "-R", sk.Path).Start()
+		}
+		m.statusText = "Opened in Finder"
+		m.addTrace("Revealed skill in Finder: " + sk.Path)
+		return
+	}
+	if isMacOS() {
+		_ = exec.Command("open", m.cfg.SkillsDir()).Start()
+	}
+	m.statusText = "Opened in Finder"
+	m.addTrace("Opened skills folder in Finder: " + m.cfg.SkillsDir())
+}
+
+func (m *Model) openSelectedSkillInMacEditor() {
+	if len(m.skillList) == 0 {
+		return
+	}
+	if m.skillCursor < 0 || m.skillCursor >= len(m.skillList) {
+		m.skillCursor = 0
+	}
+	sk := m.skillList[m.skillCursor]
+	if isMacOS() {
+		_ = exec.Command("open", "-t", sk.Path).Start()
+	}
+	m.statusText = "Opened in macOS editor"
+	m.addTrace("Opened skill in macOS default text editor: " + sk.Path)
+}
+
+func expandLocalPath(raw string) string {
+	p := strings.TrimSpace(raw)
+	p = strings.Trim(p, `"'`)
+	// Handle shell-escaped spaces when dragging a file into macOS Terminal
+	p = strings.ReplaceAll(p, `\ `, " ")
+	if strings.HasPrefix(p, "~/") {
+		if home, err := os.UserHomeDir(); err == nil && home != "" {
+			p = filepath.Join(home, p[2:])
+		}
+	}
+	return p
+}
+
+func isLikelyLocalPath(raw string) bool {
+	p := strings.TrimSpace(raw)
+	p = strings.Trim(p, `"'`)
+	if strings.HasPrefix(p, "/") || strings.HasPrefix(p, "~/") || strings.HasPrefix(p, "./") || strings.HasPrefix(p, "../") {
+		return true
+	}
+	if strings.HasSuffix(strings.ToLower(p), ".md") || strings.Contains(p, string(filepath.Separator)) {
+		return true
+	}
+	return false
+}
+
+func (m *Model) importSkillFromMacPickerCmd() tea.Cmd {
+	if !isMacOS() {
+		m.inputBuffer = ""
+		m.activeModal = modalNewSkill
+		return nil
+	}
+	skillsDir := m.cfg.SkillsDir()
+	_ = os.MkdirAll(skillsDir, 0o755)
+	if m.cfg.IsRussian() {
+		m.statusText = "Выберите навык в Finder..."
+	} else {
+		m.statusText = "Select skill in Finder..."
+	}
+	m.addTrace("Opening native macOS file chooser to import AI skill...")
+
+	prompt := "Select a SKILL.md or .md prompt file to import into TelePilot (.agents/skills):"
+	if m.cfg.IsRussian() {
+		prompt = "Выберите файл SKILL.md или .md для импорта навыка в TelePilot (.agents/skills):"
+	}
+
+	return func() tea.Msg {
+		script := fmt.Sprintf(`POSIX path of (choose file with prompt %q)`, prompt)
+		out, err := exec.Command("osascript", "-e", script).CombinedOutput()
+		if err != nil {
+			outStr := strings.ToLower(string(out) + " " + err.Error())
+			if strings.Contains(outStr, "-128") || strings.Contains(outStr, "cancel") {
+				return skillImportedMsg{canceled: true}
+			}
+			return skillImportedMsg{err: fmt.Errorf("macOS Finder picker failed: %w (%s)", err, strings.TrimSpace(string(out)))}
+		}
+		chosenPath := strings.TrimSpace(string(out))
+		if chosenPath == "" {
+			return skillImportedMsg{canceled: true}
+		}
+		imported, impErr := skills.Import(skillsDir, chosenPath)
+		return skillImportedMsg{imported: imported, err: impErr}
+	}
 }
 
 func tickCmd() tea.Cmd {

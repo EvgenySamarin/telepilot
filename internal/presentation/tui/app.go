@@ -52,6 +52,13 @@ type skillEditedMsg struct {
 	err  error
 }
 
+// skillImportedMsg is sent when the native macOS skill import picker finishes.
+type skillImportedMsg struct {
+	imported []skills.Skill
+	canceled bool
+	err      error
+}
+
 type connTestUpdateMsg struct {
 	lines []string
 	done  bool
@@ -222,6 +229,9 @@ type Model struct {
 	tab2BoxEntered    bool      // true when user pressed Enter to drill into a box (e.g. Box 1 or Box 3)
 	tab2ChatOptCursor int       // 0..3 option index when inside Box 1 (Per-Chat AI Instructions)
 	tab2BoxBounds     [5][2]int // [startLine, endLine] for each of the 5 boxes in Tab 2
+	tab2SkillOffset   int       // line offset from tab2BoxBounds[3][0] to skill row 0
+	lastVisibleRows   int       // most recent main panel viewport height
+	resizePending     bool      // true right after WindowSizeMsg to realign scroll offsets
 
 	// Global Configuration modal state (Language selection: 0 = En, 1 = Ru)
 	cfgLangIndex int
@@ -587,6 +597,63 @@ func (m *Model) reloadSkills() {
 	}
 }
 
+// syncSkillsFromDisk checks whether any skills were added, removed, or modified externally
+// (e.g. via macOS Finder or a GUI editor) and reloads them in real time without losing cursor state.
+func (m *Model) syncSkillsFromDisk() bool {
+	list, errs := skills.Load(m.cfg.SkillsDir())
+	changed := len(list) != len(m.skillList)
+	if !changed {
+		for i := range list {
+			if list[i].Name != m.skillList[i].Name ||
+				list[i].Hash != m.skillList[i].Hash ||
+				list[i].Path != m.skillList[i].Path {
+				changed = true
+				break
+			}
+		}
+	}
+	if !changed {
+		return false
+	}
+
+	var prevSelectedName string
+	if m.skillCursor >= 0 && m.skillCursor < len(m.skillList) {
+		prevSelectedName = m.skillList[m.skillCursor].Name
+	}
+	prevNames := make(map[string]bool, len(m.skillList))
+	for _, sk := range m.skillList {
+		prevNames[sk.Name] = true
+	}
+
+	m.skillList = list
+	m.skillErrs = errs
+
+	// If a new skill appeared on disk (e.g. added via Finder), move cursor to it; otherwise preserve selection
+	selectedIdx := -1
+	for idx, sk := range m.skillList {
+		if !prevNames[sk.Name] {
+			selectedIdx = idx
+			break
+		}
+	}
+	if selectedIdx < 0 && prevSelectedName != "" {
+		for idx, sk := range m.skillList {
+			if sk.Name == prevSelectedName {
+				selectedIdx = idx
+				break
+			}
+		}
+	}
+	if selectedIdx >= 0 {
+		m.skillCursor = selectedIdx
+	} else if m.skillCursor >= len(m.skillList) {
+		m.skillCursor = maxInt(0, len(m.skillList)-1)
+	}
+
+	m.addTrace(fmt.Sprintf("Live-reloaded skills from %s (%d skills)", m.cfg.SkillsDir(), len(m.skillList)))
+	return true
+}
+
 func initialAIStatusLine(cfg *config.AppConfig) string {
 	if bin := cfg.AgyCLIBin(); bin != "" {
 		model := strings.TrimSpace(cfg.AgyModel)
@@ -627,10 +694,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.resizePending = true
 		return m, nil
 
 	case tickMsg:
 		m.marqueeTick++
+		if m.marqueeTick%9 == 0 {
+			m.syncSkillsFromDisk()
+		}
 		return m, tickCmd()
 
 	case liveSyncTickMsg:
@@ -798,6 +869,33 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.addTrace(fmt.Sprintf("Editor exited with error: %v", msg.err))
 		} else {
 			m.addTrace(fmt.Sprintf("Reloaded skills from %s", m.cfg.SkillsDir()))
+		}
+		return m, nil
+
+	case skillImportedMsg:
+		if msg.canceled {
+			m.statusText = m.T("status_ready")
+			return m, nil
+		}
+		if msg.err != nil {
+			m.statusText = "Skill import error"
+			m.addTrace(fmt.Sprintf("Could not import skill: %v", msg.err))
+			return m, nil
+		}
+		m.reloadSkills()
+		if len(msg.imported) > 0 {
+			first := msg.imported[0]
+			for idx, sk := range m.skillList {
+				if sk.Name == first.Name || sk.Path == first.Path {
+					m.skillCursor = idx
+					break
+				}
+			}
+			m.tab2BoxCursor = 3
+			m.tab2BoxEntered = true
+			m.scrollTab2ToSkill()
+			m.statusText = fmt.Sprintf("Imported: %s", first.Name)
+			m.addTrace(fmt.Sprintf("Imported %d skill(s) into %s (selected: %s)", len(msg.imported), m.cfg.SkillsDir(), first.Name))
 		}
 		return m, nil
 

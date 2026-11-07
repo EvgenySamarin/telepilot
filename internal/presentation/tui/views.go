@@ -146,7 +146,10 @@ func (m *Model) renderBottomBar() string {
 				keyPair{"m", m.T("key_notes")},
 				keyPair{"v", m.T("key_preview")},
 				keyPair{"e", m.T("key_edit_skill")},
+				keyPair{"O", m.T("key_mac_edit")},
+				keyPair{"o", m.T("key_finder")},
 				keyPair{"n", m.T("key_new_skill")},
+				keyPair{"I", m.T("key_import_skill")},
 				keyPair{"r", m.T("key_run_ai")},
 			)
 		case 3:
@@ -384,6 +387,7 @@ func (m *Model) renderMainPanel(width, height int) string {
 	if visibleRows < 1 {
 		visibleRows = 1
 	}
+	m.lastVisibleRows = visibleRows
 
 	if m.activeTab == 1 {
 		liveLines := clampLinesToWidth(m.renderLiveChatTab(innerW, visibleRows), innerW)
@@ -410,15 +414,26 @@ func (m *Model) renderMainPanel(width, height int) string {
 	switch m.activeTab {
 	case 2:
 		contentLines = m.renderRePromptTab(rec, innerW)
+		if m.resizePending {
+			m.resizePending = false
+			if m.tab2BoxEntered && m.tab2BoxCursor == 3 {
+				m.scrollTab2ToSkill()
+			} else {
+				m.scrollTab2ToBox(m.tab2BoxCursor)
+			}
+		}
 	case 3:
 		contentLines = m.renderUnifiedPeriodTab(rec, innerW, visibleRows)
+		m.resizePending = false
 	case 4:
 		contentLines = m.renderTraceTab(innerW)
+		m.resizePending = false
 	}
 	contentLines = clampLinesToWidth(contentLines, innerW)
 
-	if m.mainScroll >= len(contentLines) {
-		m.mainScroll = maxInt(0, len(contentLines)-1)
+	maxScroll := maxInt(0, len(contentLines)-visibleRows)
+	if m.mainScroll > maxScroll {
+		m.mainScroll = maxScroll
 	}
 
 	sliced := contentLines
@@ -669,11 +684,12 @@ func (m *Model) renderUnifiedPeriodTab(rec *storage.PeriodSummaryRecord, innerW 
 	}
 
 	if rec == nil {
-		return []string{
-			lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render(padOrTruncate(m.T("period_tab_hdr", chatTitle, 0, 0, m.periodSpec), innerW)),
-			"",
-			truncateSingleLine(m.T("sum_empty"), innerW),
+		var emptyOut []string
+		for _, hl := range wrapTextBlock(m.T("period_tab_hdr", chatTitle, 0, 0, m.periodSpec), innerW) {
+			emptyOut = append(emptyOut, lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render(padOrTruncate(hl, innerW)))
 		}
+		emptyOut = append(emptyOut, "", truncateSingleLine(m.T("sum_empty"), innerW))
+		return emptyOut
 	}
 
 	cardW := innerW - 4
@@ -682,9 +698,10 @@ func (m *Model) renderUnifiedPeriodTab(rec *storage.PeriodSummaryRecord, innerW 
 	}
 
 	var out []string
-	out = append(out, lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render(
-		padOrTruncate(m.T("period_tab_hdr", chatTitle, minInt(m.periodCursor+1, len(m.periods)), len(m.periods), m.periodSpec), innerW),
-	), "")
+	for _, hl := range wrapTextBlock(m.T("period_tab_hdr", chatTitle, minInt(m.periodCursor+1, len(m.periods)), len(m.periods), m.periodSpec), innerW) {
+		out = append(out, lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render(padOrTruncate(hl, innerW)))
+	}
+	out = append(out, "")
 
 	// Period Archive Selector Card for the active chat
 	if len(m.periods) > 0 {
@@ -780,9 +797,10 @@ func (m *Model) renderMediaVaultSection(rec *storage.PeriodSummaryRecord, innerW
 
 	cardW := innerW - 4
 	var out []string
-	out = append(out, lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render(
-		padOrTruncate(m.T("media_hdr", m.mediaCursor+1, len(rec.MediaItems), rec.FolderPath), innerW),
-	), "")
+	for _, hl := range wrapTextBlock(m.T("media_hdr", m.mediaCursor+1, len(rec.MediaItems), rec.FolderPath), innerW) {
+		out = append(out, lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render(padOrTruncate(hl, innerW)))
+	}
+	out = append(out, "")
 
 	for idx, it := range rec.MediaItems {
 		tag := "[" + strings.ToUpper(it.MediaType) + "]"
@@ -891,6 +909,13 @@ func (m *Model) renderTranscriptTab(rec *storage.PeriodSummaryRecord, innerW int
 	return out
 }
 
+func (m *Model) tab2VisibleRows() int {
+	if m.lastVisibleRows > 0 {
+		return m.lastVisibleRows
+	}
+	return maxInt(6, m.height-10)
+}
+
 func (m *Model) scrollTab2ToBox(boxIdx int) {
 	if boxIdx < 0 || boxIdx >= len(m.tab2BoxBounds) {
 		return
@@ -904,11 +929,27 @@ func (m *Model) scrollTab2ToBox(boxIdx int) {
 	if bEnd <= bStart {
 		return
 	}
-	visibleRows := maxInt(6, m.height-8)
+	visibleRows := m.tab2VisibleRows()
 	if bStart < m.mainScroll {
-		m.mainScroll = maxInt(0, bStart-1)
+		m.mainScroll = maxInt(0, bStart)
 	} else if bEnd > m.mainScroll+visibleRows {
-		m.mainScroll = maxInt(0, bEnd-visibleRows+1)
+		target := bEnd - visibleRows
+		if target > bStart {
+			target = bStart
+		}
+		// Avoid slicing an earlier box in half at the top of the viewport if snapping to the next box header still shows boxIdx
+		for k := 0; k < boxIdx; k++ {
+			kStart := m.tab2BoxBounds[k][0]
+			kEnd := m.tab2BoxBounds[k][1]
+			if target > kStart && target <= kEnd+1 {
+				nextBoxStart := m.tab2BoxBounds[k+1][0]
+				if nextBoxStart <= bStart {
+					target = nextBoxStart
+				}
+				break
+			}
+		}
+		m.mainScroll = maxInt(0, target)
 	}
 }
 
@@ -917,10 +958,18 @@ func (m *Model) scrollTab2ToSkill() {
 	if bStart <= 0 {
 		return
 	}
-	visibleRows := maxInt(6, m.height-8)
-	skillLine := bStart + 2 + m.skillCursor
+	visibleRows := m.tab2VisibleRows()
+	offset := m.tab2SkillOffset
+	if offset < 2 {
+		offset = 2
+	}
+	skillLine := bStart + offset + m.skillCursor
+	if m.skillCursor == 0 && bStart < m.mainScroll {
+		m.mainScroll = maxInt(0, bStart)
+		return
+	}
 	if skillLine < m.mainScroll+1 {
-		m.mainScroll = maxInt(0, skillLine-2)
+		m.mainScroll = maxInt(0, skillLine-offset)
 	} else if skillLine >= m.mainScroll+visibleRows-2 {
 		m.mainScroll = maxInt(0, skillLine-visibleRows+3)
 	}
@@ -932,23 +981,45 @@ func (m *Model) renderTab2Box(boxIdx int, title string, body string, cardW int, 
 
 	borderCol := colBorder
 	titleCol := defaultTitleCol
-	displayTitle := "  " + title
+	prefix := "  "
+	badge := ""
 
 	if isEnteredBox {
 		borderCol = colGreen
 		titleCol = colGreen
+		prefix = "▼ "
 		if m.cfg.IsRussian() {
-			displayTitle = "▼ " + title + " [АКТИВНО — j/k:Выбор, Enter:Применить, Esc:Назад]"
+			badge = "[АКТИВНО — j/k:Выбор, Enter:Применить, Esc:Назад]"
 		} else {
-			displayTitle = "▼ " + title + " [ACTIVE — j/k:Select, Enter:Apply, Esc:Back]"
+			badge = "[ACTIVE — j/k:Select, Enter:Apply, Esc:Back]"
 		}
 	} else if isSelectedBox {
 		borderCol = colBorderFoc
 		titleCol = colCyan
+		prefix = "▸ "
 		if m.cfg.IsRussian() {
-			displayTitle = "▸ " + title + " [Enter: Открыть]"
+			badge = "[Enter: Открыть]"
 		} else {
-			displayTitle = "▸ " + title + " [Enter: Open]"
+			badge = "[Enter: Open]"
+		}
+	}
+
+	var displayTitle string
+	if badge == "" {
+		displayTitle = prefix + truncateSingleLine(title, maxInt(10, cardW-lipgloss.Width(prefix)))
+	} else {
+		candidate := prefix + title + " " + badge
+		if lipgloss.Width(candidate) <= cardW {
+			displayTitle = candidate
+		} else {
+			availTitleW := cardW - lipgloss.Width(prefix) - 1 - lipgloss.Width(badge)
+			if availTitleW >= 20 {
+				displayTitle = prefix + truncateSingleLine(title, availTitleW) + " " + badge
+			} else {
+				line1 := prefix + truncateSingleLine(title, maxInt(10, cardW-lipgloss.Width(prefix)))
+				line2 := "  " + truncateSingleLine(badge, maxInt(10, cardW-2))
+				displayTitle = line1 + "\n" + line2
+			}
 		}
 	}
 
@@ -962,7 +1033,10 @@ func (m *Model) renderRePromptTab(rec *storage.PeriodSummaryRecord, innerW int) 
 		cardW = 20
 	}
 	var out []string
-	out = append(out, lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render(padOrTruncate(m.T("skills_tab_hdr"), innerW)), "")
+	for _, hl := range wrapTextBlock(m.T("skills_tab_hdr"), innerW) {
+		out = append(out, lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render(padOrTruncate(hl, innerW)))
+	}
+	out = append(out, "")
 
 	ch := m.activeChat()
 	chatTitle := "Selected Chat"
@@ -978,7 +1052,9 @@ func (m *Model) renderRePromptTab(rec *storage.PeriodSummaryRecord, innerW int) 
 			"    [Enter] Войти в выбранный блок / применить действие (Esc — выйти из блока)",
 			"    [x]     Отключить ИИ для текущего чата и сбросить настройки",
 			"    [v / e] Просмотр навыка (v) или редактирование SKILL.md в $EDITOR (e)",
-			"    [n / r] Создать новый навык (n) или запустить ИИ-анализ периода (r)",
+			"    [o / O] Показать навык в Finder (o) или открыть в редакторе macOS (O)",
+			"    [n / I] Создать навык в терминале (n) или импортировать через Finder (I)",
+			"    [r]     Запустить ИИ-анализ архива периода для выбранного чата",
 			"Управление живым чатом ИИ:",
 			"    [a]     Автоответ ИИ ([ВКЛ] / [ВЫКЛ]) на входящие сообщения в чате",
 			"    [s]     Режим отправки ИИ: В черновик поля ввода (Enter) или Сразу в чат",
@@ -991,7 +1067,9 @@ func (m *Model) renderRePromptTab(rec *storage.PeriodSummaryRecord, innerW int) 
 			"    [Enter] Enter highlighted box / apply option (Esc to exit back to boxes)",
 			"    [x]     Disable AI for selected chat & clear settings",
 			"    [v / e] Preview skill prompt (v) or edit SKILL.md in $EDITOR (e)",
-			"    [n / r] Create new skill (n) or run period archive analysis (r)",
+			"    [o / O] Reveal skill in macOS Finder (o) or open in macOS GUI editor (O)",
+			"    [n / I] Create new skill in terminal (n) or import skill via Finder (I)",
+			"    [r]     Run period archive AI analysis for selected chat",
 			"Live Chat AI Control:",
 			"    [a]     Toggle AI Auto-Reply ([ON] / [OFF]) for incoming messages",
 			"    [s]     Toggle AI Send Mode (Draft to Compose Box vs Auto-Send)",
@@ -1089,10 +1167,20 @@ func (m *Model) renderRePromptTab(rec *storage.PeriodSummaryRecord, innerW int) 
 
 	// Box 3: Skills Library Card (cursor highlight inside only shown when user pressed Enter to enter Box 3)
 	inSkillsBox := m.focus == focusMain && m.activeTab == 2 && m.tab2BoxEntered && m.tab2BoxCursor == 3
+	innerTextW := cardW - 4
+	if innerTextW < 24 {
+		innerTextW = 24
+	}
 	var skillRows []string
 	if len(m.skillList) == 0 {
 		skillRows = append(skillRows, m.T("skills_empty_lib"))
 	} else {
+		nameW := 18
+		kindW := 13
+		if innerTextW < 68 {
+			nameW = 14
+			kindW = 11
+		}
 		for idx, sk := range m.skillList {
 			prefix := "  "
 			isHovered := inSkillsBox && idx == m.skillCursor
@@ -1106,34 +1194,48 @@ func (m *Model) renderRePromptTab(rec *storage.PeriodSummaryRecord, innerW int) 
 			}
 			activeBadge = padRightVisual(activeBadge, 10)
 
-			nameStr := padRightVisual(truncateSingleLine(sk.Name, 18), 18)
+			nameStr := padRightVisual(truncateSingleLine(sk.Name, nameW), nameW)
 
 			kindBadge := fmt.Sprintf("[%s]", strings.Join(sk.Media, ","))
 			if sk.Kind == skills.KindSummary {
 				kindBadge = m.T("skills_badge_summary")
 			}
-			kindBadge = padRightVisual(truncateSingleLine(kindBadge, 14), 14)
+			kindBadge = padRightVisual(truncateSingleLine(kindBadge, kindW), kindW)
 
-			descW := cardW - 52
-			if descW < 10 {
-				descW = 10
+			hashPart := fmt.Sprintf("(%s)", sk.Hash)
+			// Total non-desc width: prefix(2) + activeBadge(10) + space(1) + nameW + space(1) + kindW + space(1) + space(1) + len(hashPart)
+			fixedW := 2 + 10 + 1 + nameW + 1 + kindW + 1 + 1 + len(hashPart)
+			descW := innerTextW - fixedW
+			if descW < 8 {
+				// On very narrow terminals, omit the hash suffix so the row still fits on 1 line
+				hashPart = ""
+				fixedW = 2 + 10 + 1 + nameW + 1 + kindW + 1
+				descW = maxInt(6, innerTextW-fixedW)
 			}
-			desc := truncateSingleLine(sk.Description, descW)
+			desc := padRightVisual(truncateSingleLine(sk.Description, descW), descW)
 
-			row := fmt.Sprintf("%s%s %s %s %s (%s)", prefix, activeBadge, nameStr, kindBadge, desc, sk.Hash)
-			if isHovered {
-				skillRows = append(skillRows, lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render(row))
-			} else if isChatActiveSkill {
-				skillRows = append(skillRows, lipgloss.NewStyle().Foreground(colPurple).Bold(true).Render(row))
+			var row string
+			if hashPart != "" {
+				row = fmt.Sprintf("%s%s %s %s %s %s", prefix, activeBadge, nameStr, kindBadge, desc, hashPart)
 			} else {
-				skillRows = append(skillRows, lipgloss.NewStyle().Foreground(colText).Render(row))
+				row = fmt.Sprintf("%s%s %s %s %s", prefix, activeBadge, nameStr, kindBadge, desc)
 			}
+			skillRows = append(skillRows, row)
 		}
 	}
 
 	skillsTitle := m.T("skills_card_catalog", minInt(m.skillCursor+1, len(m.skillList)), len(m.skillList))
+	skillCardLines := append([]string{}, skillRows...)
+	skillCardLines = append(skillCardLines, "", "  "+m.T("skills_catalog_keys"))
 	b3Start := len(out)
-	out = append(out, m.renderTab2Box(3, skillsTitle, strings.Join(skillRows, "\n"), cardW, colCyan)...)
+	box3Lines := m.renderTab2Box(3, skillsTitle, strings.Join(skillCardLines, "\n"), cardW, colCyan)
+	// Title lines (1 or 2) + 1 top border line before skill row 0:
+	titleLineCount := strings.Count(skillsTitle, "\n") + 1
+	if m.focus == focusMain && m.activeTab == 2 && m.tab2BoxCursor == 3 && m.tab2BoxEntered && cardW < 85 {
+		titleLineCount = 2
+	}
+	m.tab2SkillOffset = titleLineCount + 1
+	out = append(out, box3Lines...)
 	m.tab2BoxBounds[3] = [2]int{b3Start, len(out)}
 	out = append(out, "")
 

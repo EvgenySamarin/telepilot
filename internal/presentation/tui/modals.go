@@ -117,7 +117,7 @@ func (m *Model) renderSkillPreviewModal() string {
 	}
 
 	footer := lipgloss.NewStyle().Foreground(colMuted).Render(
-		fmt.Sprintf("Esc / q / v: Close  │  e: Open in $EDITOR  │  j / k: Scroll [%d/%d]", m.previewScroll+1, maxInt(1, len(lines))),
+		fmt.Sprintf("Esc/q/v: Close  │  e: $EDITOR  │  O: Mac Editor  │  o: Finder  │  j/k: Scroll [%d/%d]", m.previewScroll+1, maxInt(1, len(lines))),
 	)
 	bodyLines = append(bodyLines, "", footer)
 
@@ -752,7 +752,8 @@ func (m *Model) renderHelpModal() string {
 			"  Enter (Вкл. 2)      : Включить выбранный ИИ-навык для текущего чата ([AI])",
 			"  x (Вкл. 2)          : Отключить ИИ-инструкции для текущего чата",
 			"  m (Вкл. 2 / 3)      : Изменить персональные ИИ-заметки для текущего чата",
-			"  e / n (Вкл. 2)      : Редактировать навык в $EDITOR (e) или создать новый (n)",
+			"  e / O / o (Вкл. 2)  : Редакт. в $EDITOR (e), macOS редакторе (O), открыть в Finder (o)",
+			"  n / I (Вкл. 2)      : Создать новый навык (n) или импортировать через Finder (I)",
 			"  r (Вкл. 1 / 2 / 3)  : Обновить чат (Вкл. 1) или запустить ИИ-анализ (Вкл. 2/3)",
 			"  p / [ / ] (Вкл. 3)  : Период анализа (p) и переключение архивов чата ([ / ])",
 			"  o / d (Вкл. 3)      : Открыть архив в Finder (o) или удалить архив (d)",
@@ -772,7 +773,8 @@ func (m *Model) renderHelpModal() string {
 			"  Enter (Tab 2)       : Enable highlighted summary skill for active chat ([AI])",
 			"  x (Tab 2)           : Disable/clear AI instructions for active chat",
 			"  m (Tab 2 / 3)       : Edit per-chat AI notes / instructions",
-			"  e / n (Tab 2)       : Edit skill in $EDITOR (e) or create new skill (n)",
+			"  e / O / o (Tab 2)   : Edit skill in $EDITOR (e), macOS editor (O), or Finder (o)",
+			"  n / I (Tab 2)       : Create new skill in terminal (n) or import via Finder (I)",
 			"  r (Tab 1 / 2 / 3)   : Refresh live chat (Tab 1) or Run AI period parse (Tab 2/3)",
 			"  p / [ / ] (Tab 3)   : Set period window (p) & cycle chat's saved archives ([ / ])",
 			"  o / d (Tab 3)       : Open archive in Finder (o) or delete archive (d)",

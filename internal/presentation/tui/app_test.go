@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -8,6 +10,7 @@ import (
 
 	"telepilot/internal/domain/ai"
 	"telepilot/internal/domain/config"
+	"telepilot/internal/domain/skills"
 	"telepilot/internal/domain/storage"
 	"telepilot/internal/network/mtproto"
 )
@@ -628,5 +631,88 @@ func TestChatsWindowVimSearchBackslash(t *testing.T) {
 	}
 	if len(m.filteredChatIndices()) != len(m.chats) {
 		t.Errorf("expected all %d chats to be visible after clearing search", len(m.chats))
+	}
+}
+
+func TestMacOSSkillsLiveReloadAndImport(t *testing.T) {
+	m := newTestModel(t, "en")
+	m.activeTab = 2
+	m.focus = focusMain
+
+	initialCount := len(m.skillList)
+
+	// 1. Simulate user adding a new skill in Finder inside .agents/skills/
+	newSkillDir := filepath.Join(m.cfg.SkillsDir(), "finder-added-skill")
+	if err := os.MkdirAll(newSkillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(newSkillDir, skills.FileName), []byte("Summarize sprint velocity and blockers."), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Trigger live auto-reload via syncSkillsFromDisk
+	if !m.syncSkillsFromDisk() {
+		t.Fatalf("expected syncSkillsFromDisk() to detect newly added Finder skill")
+	}
+	if len(m.skillList) != initialCount+1 {
+		t.Fatalf("expected skillList count %d, got %d", initialCount+1, len(m.skillList))
+	}
+	if m.skillList[m.skillCursor].Name != "finder-added-skill" {
+		t.Errorf("expected cursor to jump to newly detected Finder skill 'finder-added-skill', got %q", m.skillList[m.skillCursor].Name)
+	}
+
+	// 2. Simulate importing an external .md file via modalNewSkill ('n') path paste/drag
+	extDir := t.TempDir()
+	extSkillFile := filepath.Join(extDir, "incident-postmortem.md")
+	if err := os.WriteFile(extSkillFile, []byte("Create a blameless postmortem timeline and root cause analysis."), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	mUpdated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	m = mUpdated.(*Model)
+	if m.activeModal != modalNewSkill {
+		t.Fatalf("expected 'n' in Tab 2 to open modalNewSkill")
+	}
+	m.inputBuffer = extSkillFile
+	mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = mUpdated.(*Model)
+
+	if m.activeModal != modalNone {
+		t.Errorf("expected modalNewSkill to close after importing path")
+	}
+	if len(m.skillList) != initialCount+2 {
+		t.Fatalf("expected skillList count %d after path import, got %d", initialCount+2, len(m.skillList))
+	}
+	if m.skillList[m.skillCursor].Name != "incident-postmortem" {
+		t.Errorf("expected imported skill 'incident-postmortem' to be selected, got %q", m.skillList[m.skillCursor].Name)
+	}
+}
+
+func TestWindowResizePreservesTab2NavigationHighlights(t *testing.T) {
+	m := newTestModel(t, "en")
+	m.activeTab = 2
+	m.focus = focusMain
+	m.tab2BoxCursor = 3 // Highlight Box 3: Skills Library
+
+	// Resize to 116x41 (exact dimensions from user screenshot)
+	mUpdated, _ := m.Update(tea.WindowSizeMsg{Width: 116, Height: 41})
+	m = mUpdated.(*Model)
+
+	view := m.View()
+	if !strings.Contains(view, "[Enter: Open]") {
+		t.Errorf("expected selected Box 3 navigation highlight '[Enter: Open]' to be visible and not cropped at 116x41, got:\n%s", view)
+	}
+	if !strings.Contains(view, "I:Import") {
+		t.Errorf("expected Box 3 shortcuts ('I:Import') to wrap cleanly instead of being cropped at 116x41, got:\n%s", view)
+	}
+
+	// Enter Box 3 and resize to 90x28 -> verify [ACTIVE — ...] highlight is preserved
+	m.tab2BoxEntered = true
+	mUpdated, _ = m.Update(tea.WindowSizeMsg{Width: 90, Height: 28})
+	m = mUpdated.(*Model)
+
+	viewEntered := m.View()
+	if !strings.Contains(viewEntered, "Esc:Back]") {
+		t.Errorf("expected entered Box 3 navigation highlight 'Esc:Back]' to be visible and not cropped at 90x28, got:\n%s", viewEntered)
 	}
 }

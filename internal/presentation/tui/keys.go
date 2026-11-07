@@ -262,6 +262,29 @@ func (m *Model) handleModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "enter":
 			name := strings.TrimSpace(m.inputBuffer)
 			if name != "" {
+				if isLikelyLocalPath(name) {
+					srcPath := expandLocalPath(name)
+					imported, err := skills.Import(m.cfg.SkillsDir(), srcPath)
+					m.activeModal = modalNone
+					if err != nil {
+						m.statusText = "Skill import error"
+						m.addTrace(fmt.Sprintf("Could not import skill from %s: %v", srcPath, err))
+					} else if len(imported) > 0 {
+						m.reloadSkills()
+						for idx, sk := range m.skillList {
+							if sk.Name == imported[0].Name || sk.Path == imported[0].Path {
+								m.skillCursor = idx
+								break
+							}
+						}
+						m.tab2BoxCursor = 3
+						m.tab2BoxEntered = true
+						m.scrollTab2ToSkill()
+						m.statusText = fmt.Sprintf("Imported: %s", imported[0].Name)
+						m.addTrace(fmt.Sprintf("Imported %d skill(s) from %s into %s", len(imported), srcPath, m.cfg.SkillsDir()))
+					}
+					return m, nil
+				}
 				path, err := skills.Create(m.cfg.SkillsDir(), name)
 				if err != nil {
 					m.addTrace(fmt.Sprintf("Could not create skill %s: %v", name, err))
@@ -289,6 +312,8 @@ func (m *Model) handleModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		default:
 			if utf8.RuneCountInString(key) == 1 {
 				m.inputBuffer += key
+			} else if key == "space" || key == " " {
+				m.inputBuffer += " "
 			}
 		}
 		return m, nil
@@ -450,6 +475,13 @@ func (m *Model) handleModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, openEditorCmd(m.skillList[m.skillCursor].Path)
 			}
 			return m, nil
+		case "O":
+			m.activeModal = modalNone
+			m.openSelectedSkillInMacEditor()
+			return m, nil
+		case "o":
+			m.openSelectedSkillInFinder()
+			return m, nil
 		}
 		return m, nil
 
@@ -553,6 +585,7 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.tab2BoxCursor = 0
 		m.tab2BoxEntered = false
 		m.mainScroll = 0
+		m.syncSkillsFromDisk()
 	case "3":
 		m.activeTab = 3
 		m.mainScroll = 0
@@ -979,7 +1012,22 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, m.runChatAICmd()
 		}
 
+	case "I":
+		if m.activeTab == 2 {
+			return m, m.importSkillFromMacPickerCmd()
+		}
+
+	case "O":
+		if m.activeTab == 2 {
+			m.openSelectedSkillInMacEditor()
+			return m, nil
+		}
+
 	case "o":
+		if m.activeTab == 2 {
+			m.openSelectedSkillInFinder()
+			return m, nil
+		}
 		if m.activeTab == 3 {
 			rec := m.activePeriodRecord()
 			if rec != nil && rec.FolderPath != "" {

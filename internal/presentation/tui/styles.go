@@ -93,8 +93,10 @@ func renderInteriorCardWithBorder(title string, body string, cardWidth int, titl
 
 	var out []string
 	if strings.TrimSpace(title) != "" {
-		tLine := " " + lipgloss.NewStyle().Foreground(titleCol).Bold(true).Render(truncateSingleLine(title, cardWidth))
-		out = append(out, tLine)
+		for _, tl := range wrapTextBlock(title, cardWidth) {
+			tLine := " " + lipgloss.NewStyle().Foreground(titleCol).Bold(true).Render(padOrTruncate(tl, cardWidth))
+			out = append(out, tLine)
+		}
 	}
 	for _, bl := range strings.Split(box, "\n") {
 		out = append(out, " "+bl)
@@ -105,6 +107,10 @@ func renderInteriorCardWithBorder(title string, body string, cardWidth int, titl
 // renderColorizedCardLine highlights ON/ACTIVE status tokens in green and OFF/NOT CONFIGURED status tokens in red
 // while preserving the exact visual width of the padded card line.
 func renderColorizedCardLine(padded string) string {
+	trimmedLeft := strings.TrimLeft(padded, " ")
+	if strings.HasPrefix(trimmedLeft, "▸ ") {
+		return lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render(padded)
+	}
 	type statusTok struct {
 		token string
 		col   lipgloss.Color
@@ -117,6 +123,7 @@ func renderColorizedCardLine(padded string) string {
 		{"[CONNECTED]", colGreen},
 		{"[ПОДКЛЮЧЕН]", colGreen},
 		{"[ACTIVE]", colGreen},
+		{"[АКТИВНО]", colGreen},
 		{"[АКТИВЕН]", colGreen},
 		{"[RUNNING]", colGreen},
 		{"[ВЫПОЛНЯЕТСЯ]", colGreen},
@@ -287,6 +294,11 @@ func wrapTextBlock(text string, width int) []string {
 			result = append(result, "")
 			continue
 		}
+		// If the line already fits within width, keep it intact so multi-space column padding is preserved.
+		if lipgloss.Width(para) <= width {
+			result = append(result, para)
+			continue
+		}
 		// Preserve leading indentation (e.g. "    " 4-space indented list items)
 		leadSpaces := 0
 		for _, ch := range para {
@@ -301,6 +313,9 @@ func wrapTextBlock(text string, width int) []string {
 		}
 		indentPrefix := strings.Repeat(" ", leadSpaces)
 		contIndent := indentPrefix
+		if leadSpaces == 0 && (strings.HasPrefix(para, "▸ ") || strings.HasPrefix(para, "▼ ") || strings.HasPrefix(para, " ▸ ")) {
+			contIndent = "    "
+		}
 
 		words := strings.Fields(para)
 		if len(words) == 0 {

@@ -87,29 +87,92 @@ func EnsureDefaults(dir string) error {
 	})
 }
 
-// Load parses every <dir>/<name>/SKILL.md. Broken skills are skipped and reported in errs.
+// Load parses every <dir>/<name>/SKILL.md (and also normalizes standalone .md files
+// or single-.md folders added via macOS Finder). Broken skills are skipped and reported in errs.
 func Load(dir string) (list []Skill, errs []error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, []error{err}
 	}
+
+	// Track existing directory slugs so we can detect Finder folder duplications
+	dirNames := make(map[string]bool, len(entries))
+	for _, e := range entries {
+		if e.IsDir() && !strings.HasPrefix(e.Name(), ".") {
+			dirNames[Slug(e.Name())] = true
+		}
+	}
+
+	// First pass: if user dropped a standalone <name>.md file directly into .agents/skills/ via Finder,
+	// automatically organize it into .agents/skills/<slug>/SKILL.md.
+	for _, e := range entries {
+		if e.IsDir() || strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		lower := strings.ToLower(e.Name())
+		if !strings.HasSuffix(lower, ".md") || lower == "readme.md" {
+			continue
+		}
+		rawName := strings.TrimSuffix(e.Name(), filepath.Ext(e.Name()))
+		slug := Slug(rawName)
+		if slug == "" {
+			continue
+		}
+		srcFile := filepath.Join(dir, e.Name())
+		targetDir := filepath.Join(dir, slug)
+		targetFile := filepath.Join(targetDir, FileName)
+		if _, statErr := os.Stat(targetFile); statErr != nil {
+			if data, readErr := os.ReadFile(srcFile); readErr == nil {
+				normalized := EnsureFrontmatter(slug, data)
+				if mkErr := os.MkdirAll(targetDir, 0o755); mkErr == nil {
+					if wErr := os.WriteFile(targetFile, normalized, 0o644); wErr == nil {
+						_ = os.Remove(srcFile)
+						dirNames[slug] = true
+					}
+				}
+			}
+		}
+	}
+
+	// Re-read directory entries in case standalone .md files were promoted into folders
+	entries, err = os.ReadDir(dir)
+	if err != nil {
+		return nil, []error{err}
+	}
+
+	seenNames := make(map[string]bool, len(entries))
 	for _, e := range entries {
 		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
 			continue
 		}
-		path := filepath.Join(dir, e.Name(), FileName)
-		data, err := os.ReadFile(path)
-		if err != nil {
-			continue // directory without SKILL.md
+		folderPath := filepath.Join(dir, e.Name())
+		folderSlug := Slug(e.Name())
+		path := filepath.Join(folderPath, FileName)
+		data, readErr := os.ReadFile(path)
+		if readErr != nil {
+			// Check if the user placed a single .md file inside the subfolder via Finder
+			if altPath, altData, ok := findSingleMarkdownInDir(folderPath); ok {
+				path = altPath
+				data = altData
+			} else {
+				continue // directory without SKILL.md
+			}
 		}
-		sk, err := Parse(path, data)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("%s: %w", path, err))
+		normalized := EnsureFrontmatter(folderSlug, data)
+		sk, parseErr := Parse(path, normalized)
+		if parseErr != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", path, parseErr))
 			continue
 		}
 		if sk.Name == "" {
-			sk.Name = e.Name()
+			sk.Name = folderSlug
 		}
+		// If user duplicated a skill folder in Finder (e.g. "period-summary copy") without
+		// editing the frontmatter `name:`, prefer the folder slug so both skills are available.
+		if folderSlug != "" && sk.Name != folderSlug && (dirNames[sk.Name] || seenNames[sk.Name]) {
+			sk.Name = folderSlug
+		}
+		seenNames[sk.Name] = true
 		list = append(list, sk)
 	}
 	sort.SliceStable(list, func(i, j int) bool {
@@ -119,6 +182,61 @@ func Load(dir string) (list []Skill, errs []error) {
 		return list[i].Name < list[j].Name
 	})
 	return list, errs
+}
+
+func findSingleMarkdownInDir(folderPath string) (string, []byte, bool) {
+	subEntries, err := os.ReadDir(folderPath)
+	if err != nil {
+		return "", nil, false
+	}
+	var mdFiles []string
+	for _, se := range subEntries {
+		if se.IsDir() || strings.HasPrefix(se.Name(), ".") {
+			continue
+		}
+		lower := strings.ToLower(se.Name())
+		if strings.HasSuffix(lower, ".md") && lower != "readme.md" {
+			mdFiles = append(mdFiles, filepath.Join(folderPath, se.Name()))
+		}
+	}
+	if len(mdFiles) != 1 {
+		return "", nil, false
+	}
+	data, err := os.ReadFile(mdFiles[0])
+	if err != nil {
+		return "", nil, false
+	}
+	return mdFiles[0], data, true
+}
+
+// EnsureFrontmatter wraps plain Markdown instructions in a default summary skill frontmatter
+// if the file does not already start with "---". If it starts with "---", it is returned as-is.
+func EnsureFrontmatter(fallbackSlug string, data []byte) []byte {
+	content := strings.ReplaceAll(string(data), "\r\n", "\n")
+	trimmed := strings.TrimSpace(content)
+	if trimmed == "" || strings.HasPrefix(content, "---\n") || strings.HasPrefix(trimmed, "---\n") {
+		if !strings.HasPrefix(content, "---\n") && strings.HasPrefix(trimmed, "---\n") {
+			return []byte(trimmed + "\n")
+		}
+		return data
+	}
+	slug := Slug(fallbackSlug)
+	if slug == "" {
+		slug = "custom-skill"
+	}
+	desc := "Custom AI skill (" + slug + ")"
+	for _, line := range strings.Split(trimmed, "\n") {
+		clean := strings.TrimSpace(strings.TrimLeft(line, "#*-• "))
+		if clean != "" {
+			if len(clean) > 72 {
+				clean = clean[:72] + "..."
+			}
+			desc = strings.ReplaceAll(clean, ":", " -")
+			break
+		}
+	}
+	wrapped := fmt.Sprintf("---\nname: %s\ndescription: %s\nkind: summary\n---\n%s\n", slug, desc, trimmed)
+	return []byte(wrapped)
 }
 
 // Parse parses SKILL.md content.
@@ -332,4 +450,134 @@ what each one should contain:
 		return "", err
 	}
 	return path, nil
+}
+
+// Import imports one or more skills from srcPath (which may be a SKILL.md file, any .md file,
+// a skill directory containing SKILL.md, or a parent directory of skill folders) into destDir.
+func Import(destDir, srcPath string) ([]Skill, error) {
+	srcPath = strings.TrimSpace(srcPath)
+	if srcPath == "" {
+		return nil, fmt.Errorf("empty skill source path")
+	}
+	st, err := os.Stat(srcPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if !st.IsDir() {
+		sk, err := importSingleSkillFile(destDir, srcPath, strings.EqualFold(filepath.Base(srcPath), FileName))
+		if err != nil {
+			return nil, err
+		}
+		return []Skill{sk}, nil
+	}
+
+	// srcPath is a directory: check if it is itself a skill folder
+	skillMd := filepath.Join(srcPath, FileName)
+	if info, statErr := os.Stat(skillMd); statErr == nil && !info.IsDir() {
+		sk, err := importSingleSkillFile(destDir, skillMd, true)
+		if err != nil {
+			return nil, err
+		}
+		return []Skill{sk}, nil
+	}
+	if altMd, _, ok := findSingleMarkdownInDir(srcPath); ok {
+		sk, err := importSingleSkillFile(destDir, altMd, true)
+		if err != nil {
+			return nil, err
+		}
+		return []Skill{sk}, nil
+	}
+
+	// Otherwise, check if srcPath is a parent directory containing skill subfolders or .md files
+	entries, err := os.ReadDir(srcPath)
+	if err != nil {
+		return nil, err
+	}
+	var imported []Skill
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		subPath := filepath.Join(srcPath, e.Name())
+		if e.IsDir() {
+			subSkillMd := filepath.Join(subPath, FileName)
+			if info, statErr := os.Stat(subSkillMd); statErr == nil && !info.IsDir() {
+				if sk, impErr := importSingleSkillFile(destDir, subSkillMd, true); impErr == nil {
+					imported = append(imported, sk)
+				}
+			} else if altMd, _, ok := findSingleMarkdownInDir(subPath); ok {
+				if sk, impErr := importSingleSkillFile(destDir, altMd, true); impErr == nil {
+					imported = append(imported, sk)
+				}
+			}
+		} else if strings.HasSuffix(strings.ToLower(e.Name()), ".md") && strings.ToLower(e.Name()) != "readme.md" {
+			if sk, impErr := importSingleSkillFile(destDir, subPath, false); impErr == nil {
+				imported = append(imported, sk)
+			}
+		}
+	}
+	if len(imported) == 0 {
+		return nil, fmt.Errorf("no valid SKILL.md or .md skill files found in %s", srcPath)
+	}
+	return imported, nil
+}
+
+func importSingleSkillFile(destDir, mdFilePath string, copySiblingFiles bool) (Skill, error) {
+	data, err := os.ReadFile(mdFilePath)
+	if err != nil {
+		return Skill{}, err
+	}
+
+	base := filepath.Base(mdFilePath)
+	var fallbackSlug string
+	if strings.EqualFold(base, FileName) {
+		fallbackSlug = Slug(filepath.Base(filepath.Dir(mdFilePath)))
+	} else {
+		fallbackSlug = Slug(strings.TrimSuffix(base, filepath.Ext(base)))
+	}
+	if fallbackSlug == "" || fallbackSlug == "skills" {
+		fallbackSlug = "imported-skill"
+	}
+
+	normalized := EnsureFrontmatter(fallbackSlug, data)
+	parsed, err := Parse(mdFilePath, normalized)
+	if err != nil {
+		return Skill{}, err
+	}
+
+	slug := Slug(parsed.Name)
+	if slug == "" {
+		slug = fallbackSlug
+	}
+	if parsed.Name == "" {
+		parsed.Name = slug
+	}
+
+	targetDir := filepath.Join(destDir, slug)
+	targetFile := filepath.Join(targetDir, FileName)
+	if err := os.MkdirAll(targetDir, 0o755); err != nil {
+		return Skill{}, err
+	}
+
+	// Copy sibling files if importing from a dedicated skill folder (and not already in targetDir)
+	srcDir := filepath.Dir(mdFilePath)
+	if copySiblingFiles && filepath.Clean(srcDir) != filepath.Clean(targetDir) && filepath.Clean(srcDir) != filepath.Clean(destDir) {
+		if entries, readErr := os.ReadDir(srcDir); readErr == nil {
+			for _, e := range entries {
+				if e.IsDir() || strings.HasPrefix(e.Name(), ".") || filepath.Clean(filepath.Join(srcDir, e.Name())) == filepath.Clean(mdFilePath) {
+					continue
+				}
+				if b, rErr := os.ReadFile(filepath.Join(srcDir, e.Name())); rErr == nil {
+					_ = os.WriteFile(filepath.Join(targetDir, e.Name()), b, 0o644)
+				}
+			}
+		}
+	}
+
+	if err := os.WriteFile(targetFile, normalized, 0o644); err != nil {
+		return Skill{}, err
+	}
+	parsed.Path = targetFile
+	return parsed, nil
 }

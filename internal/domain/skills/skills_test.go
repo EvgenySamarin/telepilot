@@ -114,3 +114,56 @@ func TestCreateSkill(t *testing.T) {
 		t.Errorf("expected kind %q, got %q", KindSummary, sk.Kind)
 	}
 }
+
+func TestImportSkillAndFinderAutoDiscovery(t *testing.T) {
+	skillsDir := t.TempDir()
+	extDir := t.TempDir()
+
+	// 1. Import a plain Markdown file (without YAML frontmatter) from an external folder
+	plainMdPath := filepath.Join(extDir, "Release Notes Digest.md")
+	plainContent := "# Release Notes Digest\nSummarize all release blockers, PRs, and deployment timelines."
+	if err := os.WriteFile(plainMdPath, []byte(plainContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	imported, err := Import(skillsDir, plainMdPath)
+	if err != nil {
+		t.Fatalf("Import plain markdown failed: %v", err)
+	}
+	if len(imported) != 1 || imported[0].Name != "release-notes-digest" {
+		t.Fatalf("expected imported skill 'release-notes-digest', got %+v", imported)
+	}
+
+	// 2. Simulate user dropping a standalone .md file directly into .agents/skills/ in Finder
+	droppedMd := filepath.Join(skillsDir, "finder-quick-skill.md")
+	if err := os.WriteFile(droppedMd, []byte("Extract all customer feature requests and urgency levels."), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// 3. Simulate user duplicating a skill folder in Finder ("release-notes-digest copy") without changing frontmatter name
+	dupDir := filepath.Join(skillsDir, "release-notes-digest copy")
+	if err := os.MkdirAll(dupDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	origBytes, err := os.ReadFile(imported[0].Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dupDir, FileName), origBytes, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	list, errs := Load(skillsDir)
+	if len(errs) > 0 {
+		t.Fatalf("Load reported unexpected errors: %v", errs)
+	}
+	if _, ok := Find(list, "release-notes-digest"); !ok {
+		t.Errorf("expected 'release-notes-digest' in loaded skills")
+	}
+	if _, ok := Find(list, "finder-quick-skill"); !ok {
+		t.Errorf("expected standalone Finder file 'finder-quick-skill.md' to be normalized and loaded")
+	}
+	if _, ok := Find(list, "release-notes-digest-copy"); !ok {
+		t.Errorf("expected duplicated Finder folder to be deduplicated as 'release-notes-digest-copy'")
+	}
+}
