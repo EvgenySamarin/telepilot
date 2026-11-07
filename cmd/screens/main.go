@@ -214,28 +214,45 @@ func main() {
 	{
 		m := tui.NewModel(cfg, aiEng, mtSvc, true)
 		mUpdated, _ := m.Update(tea.WindowSizeMsg{Width: cols, Height: rows})
-		// Enable AI for the first chat so [AI] highlight is showcased in the sidebar
+		// Enable AI for the first chat via Box 3 (Skills Library) so [AI] highlight is showcased in the sidebar
 		mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
 		mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
+		for i := 0; i < 3; i++ {
+			mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+		}
 		mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyEnter})
+		mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+		mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyEnter})
+		mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyEsc})
 		mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}})
+		mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
 		m = mUpdated.(*tui.Model)
 
 		view := m.View()
 		saveScreen(view, cols, rows, "telepilot — Tokyo-Night Terminal UI (Live Chat & Per-Chat AI)", "demo_dashboard", assetsDir)
 	}
 
-	// 2. Per-Chat AI & Skills (Tab 2: AI & Skills)
+	// 2. Per-Chat AI & Skills (Tab 2: AI & Skills with 2-Level Box Navigation)
 	{
 		m := tui.NewModel(cfg, aiEng, mtSvc, true)
 		mUpdated, _ := m.Update(tea.WindowSizeMsg{Width: cols, Height: rows})
 		mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
 		mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
+		// Navigate to Box 3 (Skills Library), enter it, assign 'period-summary', then exit back and select Box 1
+		for i := 0; i < 3; i++ {
+			mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+		}
+		mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyEnter})
+		mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+		mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyEnter})
+		mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyEsc})
+		mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+		mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
 		mUpdated, _ = mUpdated.Update(tea.KeyMsg{Type: tea.KeyEnter})
 		m = mUpdated.(*tui.Model)
 
 		view := m.View()
-		saveScreen(view, cols, rows, "telepilot — Per-Chat AI Instructions & Modular Skills (.agents/skills)", "skills_browser", assetsDir)
+		saveScreen(view, cols, rows, "telepilot — Per-Chat AI Instructions & 2-Level Box Navigation", "skills_browser", assetsDir)
 	}
 
 	// 3. Unified Period Archive (Tab 3: Summary + Media Vault + Transcript)
