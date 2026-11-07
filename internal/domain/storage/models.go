@@ -92,3 +92,18 @@ type LiveMessage struct {
 	DurationSec   int    `json:"duration_sec,omitempty"`
 	CachedPath    string `json:"cached_path,omitempty"` // populated once downloaded on-demand via 'v'
 }
+
+// SkillOutputRecord stores the free-form result of running an AI skill on a chat (displayed in Tab 3: AI Output).
+type SkillOutputRecord struct {
+	ChatID       int64  `json:"chat_id"`
+	ChatTitle    string `json:"chat_title"`
+	Skill        string `json:"skill"`
+	SkillHash    string `json:"skill_hash,omitempty"`
+	SkillDesc    string `json:"skill_desc,omitempty"`
+	Notes        string `json:"notes,omitempty"`
+	ModelUsed    string `json:"model_used"`
+	MessageCount int    `json:"message_count"`
+	Output       string `json:"output"`
+	OutputPath   string `json:"output_path,omitempty"`
+	CreatedAt    string `json:"created_at"`
+}

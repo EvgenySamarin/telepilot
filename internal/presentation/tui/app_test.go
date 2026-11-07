@@ -267,9 +267,6 @@ func TestRussianTitlesLocalization(t *testing.T) {
 
 	// Verify Top Bar titles
 	topBar := m.renderTopBar()
-	if !strings.Contains(topBar, "Период:") {
-		t.Errorf("renderTopBar() should contain localized 'Период:', got:\n%s", topBar)
-	}
 	if !strings.Contains(topBar, "Чат:") {
 		t.Errorf("renderTopBar() should contain localized 'Чат:', got:\n%s", topBar)
 	}
@@ -297,7 +294,7 @@ func TestRussianTitlesLocalization(t *testing.T) {
 
 	// Verify Main Panel 4 Tabs
 	mainPanel := m.renderMainPanel(80, 30)
-	expectedTabs := []string{"1:Чат", "2:ИИ и навыки", "3:Архив периода", "4:Логи: полные"}
+	expectedTabs := []string{"1:Чат", "2:ИИ и навыки", "3:Результат ИИ", "4:Логи: полные"}
 	for _, expected := range expectedTabs {
 		if !strings.Contains(mainPanel, expected) {
 			t.Errorf("renderMainPanel() should contain tab %q, got:\n%s", expected, mainPanel)
@@ -306,18 +303,15 @@ func TestRussianTitlesLocalization(t *testing.T) {
 
 	// Verify Tab 2 (Per-Chat AI & Skills)
 	m.activeTab = 2
-	var rec storage.PeriodSummaryRecord
-	if len(m.periods) > 0 {
-		rec = m.periods[0]
-	}
-	skillLines := m.renderRePromptTab(&rec, 76)
+	rec := m.activeSkillOutputRecord()
+	skillLines := m.renderRePromptTab(rec, 76)
 	skillJoined := strings.Join(skillLines, "\n")
 	expectedSkillTitles := []string{
 		"ИИ-навыки для чата",
 		"Инструкции ИИ для выбранного чата",
 		"Текущая конфигурация ИИ и активный навык",
 		"Библиотека навыков",
-		"Выбранный период и параметры запуска",
+		"Последний результат ИИ-навыка для чата",
 		"Действия ИИ и горячие клавиши",
 	}
 	for _, title := range expectedSkillTitles {
@@ -326,24 +320,18 @@ func TestRussianTitlesLocalization(t *testing.T) {
 		}
 	}
 
-	// Verify Tab 3 (Unified Period Archive: Summary + Media Vault + Transcript collapsed into one view)
+	// Verify Tab 3 (AI Skill Output)
 	m.activeTab = 3
-	unifiedLines := m.renderUnifiedPeriodTab(&rec, 76, 30)
-	unifiedJoined := strings.Join(unifiedLines, "\n")
-	expectedUnifiedTitles := []string{
-		"Архив периода",
-		"Сводка за период",
-		"Использованный навык и инструкции",
-		"Краткое содержание",
-		"Ключевые решения и главное",
-		"Учет голосовых сообщений, изображений и документов",
-		"Задачи и следующие шаги",
-		"Медиафайлы",
-		"Хронологическая лента сообщений",
+	outputLines := m.renderSkillOutputTab(rec, 76, 30)
+	outputJoined := strings.Join(outputLines, "\n")
+	expectedOutputTitles := []string{
+		"Результат ИИ-навыка",
+		"Использованный навык и параметры запуска",
+		"Результат работы ИИ-навыка",
 	}
-	for _, title := range expectedUnifiedTitles {
-		if !strings.Contains(unifiedJoined, title) {
-			t.Errorf("renderUnifiedPeriodTab() should contain %q, got:\n%s", title, unifiedJoined)
+	for _, title := range expectedOutputTitles {
+		if !strings.Contains(outputJoined, title) {
+			t.Errorf("renderSkillOutputTab() should contain %q, got:\n%s", title, outputJoined)
 		}
 	}
 
@@ -714,5 +702,63 @@ func TestWindowResizePreservesTab2NavigationHighlights(t *testing.T) {
 	viewEntered := m.View()
 	if !strings.Contains(viewEntered, "Esc:Back]") {
 		t.Errorf("expected entered Box 3 navigation highlight 'Esc:Back]' to be visible and not cropped at 90x28, got:\n%s", viewEntered)
+	}
+}
+
+func TestSkillOutputTabAndObsoleteArchiveHotkeysRemoved(t *testing.T) {
+	m := newTestModel(t, "en")
+	m.activeTab = 3
+	m.focus = focusMain
+
+	// 1. Verify Tab 3 header is "3:AI Output" and Period is removed from top bar
+	view := m.View()
+	if !strings.Contains(view, "[3:AI Output]") {
+		t.Errorf("expected Tab 3 to be labeled '[3:AI Output]', got:\n%s", view)
+	}
+	if strings.Contains(m.renderTopBar(), "Period:") {
+		t.Errorf("expected 'Period:' to be removed from top bar, got:\n%s", m.renderTopBar())
+	}
+
+	// 2. Verify obsolete archive/period hotkeys ('p', 'd') no longer open modals
+	for _, key := range []rune{'p', 'd'} {
+		mUpdated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{key}})
+		m = mUpdated.(*Model)
+		if m.activeModal != modalNone {
+			t.Errorf("expected obsolete hotkey %q not to open any modal, got activeModal=%v", string(key), m.activeModal)
+		}
+	}
+
+	// 3. Simulate completion of a custom free-form AI skill run on the selected chat
+	ch := m.activeChat()
+	if ch == nil {
+		t.Fatal("expected active chat")
+	}
+	customRec := &storage.SkillOutputRecord{
+		ChatID:       ch.ChatID,
+		ChatTitle:    ch.Title,
+		Skill:        "custom-security-audit",
+		SkillHash:    "abc123456789",
+		ModelUsed:    "agy-cli/auto",
+		MessageCount: len(m.liveMessages),
+		Output:       "Security Audit Result:\n- Zero plaintext credentials detected in chat.\n- 2 action items assigned to SRE.",
+		CreatedAt:    "2026-11-08 00:00:00 UTC",
+	}
+	m.activeTab = 2
+	mUpdated, _ := m.Update(parseDoneMsg{record: customRec})
+	m = mUpdated.(*Model)
+
+	if m.activeTab != 3 {
+		t.Errorf("expected completion of AI skill to switch to Tab 3 (AI Output), got tab %d", m.activeTab)
+	}
+	renderedTab3 := m.View()
+	if !strings.Contains(renderedTab3, "custom-security-audit") || !strings.Contains(renderedTab3, "Security Audit Result:") {
+		t.Errorf("expected Tab 3 to render free-form skill output, got:\n%s", renderedTab3)
+	}
+	savedRec := m.activeSkillOutputRecord()
+	if savedRec == nil || savedRec.OutputPath == "" {
+		t.Fatalf("expected skill output record to be persisted with OutputPath, got %+v", savedRec)
+	}
+	if _, err := os.Stat(savedRec.OutputPath); err != nil {
+		t.Errorf("expected markdown output file to exist at %s: %v", savedRec.OutputPath, err)
 	}
 }

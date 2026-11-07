@@ -60,6 +60,97 @@ func SaveChatAIConfigs(dataDir string, cfgs map[int64]ChatAIConfig) error {
 	return os.WriteFile(ChatAIConfigFilePath(dataDir), bytes, 0o644)
 }
 
+func ChatSkillOutputsFilePath(dataDir string) string {
+	return filepath.Join(dataDir, "chat_skill_outputs.json")
+}
+
+func LoadChatSkillOutputs(dataDir string) map[int64]SkillOutputRecord {
+	out := make(map[int64]SkillOutputRecord)
+	path := ChatSkillOutputsFilePath(dataDir)
+	data, err := os.ReadFile(path)
+	if err != nil || len(data) == 0 {
+		return out
+	}
+	var list []SkillOutputRecord
+	if err := json.Unmarshal(data, &list); err == nil {
+		for _, item := range list {
+			if item.ChatID != 0 {
+				out[item.ChatID] = item
+			}
+		}
+		return out
+	}
+	return out
+}
+
+func SaveChatSkillOutputs(dataDir string, outputs map[int64]SkillOutputRecord) error {
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		return err
+	}
+	outputsDir := filepath.Join(dataDir, "outputs")
+	_ = os.MkdirAll(outputsDir, 0o755)
+
+	var list []SkillOutputRecord
+	for chatID, rec := range outputs {
+		if chatID == 0 || strings.TrimSpace(rec.Output) == "" {
+			continue
+		}
+		slug := config.Slugify(rec.ChatTitle)
+		mdPath := filepath.Join(outputsDir, fmt.Sprintf("%s_output.md", slug))
+		mdContent := fmt.Sprintf("# AI Skill Output: %s\n\n- **Skill**: %s (%s)\n- **Model**: %s\n- **Messages Analyzed**: %d\n- **Generated At**: %s\n\n---\n\n%s\n",
+			rec.ChatTitle, rec.Skill, rec.SkillHash, rec.ModelUsed, rec.MessageCount, rec.CreatedAt, rec.Output)
+		if err := os.WriteFile(mdPath, []byte(mdContent), 0o644); err == nil {
+			rec.OutputPath = mdPath
+			outputs[chatID] = rec
+		}
+		list = append(list, rec)
+	}
+	sort.Slice(list, func(i, j int) bool {
+		return list[i].ChatID < list[j].ChatID
+	})
+	bytes, err := json.MarshalIndent(list, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(ChatSkillOutputsFilePath(dataDir), bytes, 0o644)
+}
+
+func DemoSkillOutput(chat ChatInfo, lang string) SkillOutputRecord {
+	isRu := strings.ToLower(strings.TrimSpace(lang)) == "ru"
+	if isRu {
+		return SkillOutputRecord{
+			ChatID:       chat.ChatID,
+			ChatTitle:    chat.Title,
+			Skill:        "period-summary",
+			SkillHash:    "ffb7ffede482",
+			SkillDesc:    "Анализ и выполнение ИИ-навыка по сообщениям чата",
+			ModelUsed:    "agy-cli/auto",
+			MessageCount: len(DemoLiveMessages(chat)),
+			CreatedAt:    "2026-11-07 23:45:00 UTC",
+			Output: strings.Join([]string{
+				"• График перехода на API v2 согласован: заморозка эндпоинтов v1 в пятницу 18:00 UTC.",
+				"• Сессии авторизации переведены на кластер Redis 7.2 с шардированием; задержка p99 снижена на 38% (до 340 мс).",
+				"• Следующий шаг: включить режим двойной записи (Phase 1 dual-write) на staging завтра утром.",
+			}, "\n"),
+		}
+	}
+	return SkillOutputRecord{
+		ChatID:       chat.ChatID,
+		ChatTitle:    chat.Title,
+		Skill:        "period-summary",
+		SkillHash:    "ffb7ffede482",
+		SkillDesc:    "AI skill execution output for the selected chat",
+		ModelUsed:    "agy-cli/auto",
+		MessageCount: len(DemoLiveMessages(chat)),
+		CreatedAt:    "2026-11-07 23:45:00 UTC",
+		Output: strings.Join([]string{
+			"• API v2 cutover schedule finalized: v1 endpoints freeze this Friday at 18:00 UTC.",
+			"• Auth session store migrated to sharded Redis 7.2 cluster; p99 latency dropped by 38% to 340ms.",
+			"• Next step: enable Phase 1 dual-write in staging first thing tomorrow morning.",
+		}, "\n"),
+	}
+}
+
 func DiscoverChatPeriodFolders(exportsDir string, chat ChatInfo) []PeriodSummaryRecord {
 	all := DiscoverAllPeriodFolders(exportsDir)
 	chatSlug := config.Slugify(chat.Title)

@@ -17,13 +17,6 @@ func (m *Model) renderModalOverlay() string {
 		modalBox = m.renderLoginFormModal()
 	case modalLoginQR:
 		modalBox = m.renderLoginQRModal()
-	case modalPeriod:
-		modalBox = m.renderInputModal(
-			m.T("input_period_title"),
-			m.T("input_period_sub"),
-			m.inputBuffer,
-			m.T("input_period_foot"),
-		)
 	case modalPrompt:
 		modalBox = m.renderSingleShotModal()
 	case modalNewSkill:
@@ -39,8 +32,6 @@ func (m *Model) renderModalOverlay() string {
 		modalBox = m.renderGlobalConfigModal()
 	case modalHelp:
 		modalBox = m.renderHelpModal()
-	case modalConfirmDelete:
-		modalBox = m.renderConfirmDeleteModal()
 	case modalSkillPreview:
 		modalBox = m.renderSkillPreviewModal()
 	}
@@ -445,91 +436,6 @@ func (m *Model) renderInputModal(title, subtitle, value, footer string) string {
 		Render(strings.Join(lines, "\n"))
 }
 
-func (m *Model) renderConfirmDeleteModal() string {
-	modalW := 78
-	if m.width-6 < modalW {
-		modalW = m.width - 6
-	}
-	innerW := modalW - 4
-
-	rec := m.activePeriodRecord()
-	chatTitle := "Unknown"
-	periodRange := ""
-	folderPath := ""
-	accounting := ""
-	if rec != nil {
-		chatTitle = sanitizeTerminalText(rec.ChatTitle)
-		periodRange = fmt.Sprintf("%s -> %s (%s)", rec.PeriodStart, rec.PeriodEnd, rec.PeriodSpec)
-		folderPath = rec.FolderPath
-		if m.cfg.IsRussian() {
-			accounting = fmt.Sprintf("%d сообщ.  |  %d голос  |  %d фото  |  %d док.",
-				rec.TotalMessages, rec.VoiceCount, rec.ImageCount, rec.DocumentCount)
-		} else {
-			accounting = fmt.Sprintf("%d messages  |  %d voice  |  %d images  |  %d documents",
-				rec.TotalMessages, rec.VoiceCount, rec.ImageCount, rec.DocumentCount)
-		}
-	}
-
-	warningText := m.T("del_modal_warning")
-	var warnLines []string
-	for _, wl := range wrapTextBlock(warningText, innerW-2) {
-		warnLines = append(warnLines, lipgloss.NewStyle().Foreground(colYellow).Bold(true).Render(wl))
-	}
-
-	detailsBody := strings.Join([]string{
-		m.T("del_modal_chat", chatTitle),
-		m.T("del_modal_period", periodRange),
-		m.T("del_modal_contents", accounting),
-		m.T("del_modal_folder", folderPath),
-	}, "\n")
-
-	var detailLines []string
-	for _, dl := range wrapTextBlock(detailsBody, innerW-6) {
-		detailLines = append(detailLines, lipgloss.NewStyle().Foreground(colText).Render(padOrTruncate(dl, innerW-6)))
-	}
-	detailsBox := lipgloss.NewStyle().
-		Border(lipgloss.NormalBorder()).
-		BorderForeground(colRed).
-		Padding(0, 1).
-		Width(innerW - 2).
-		Render(strings.Join(detailLines, "\n"))
-
-	btnW := (innerW - 5) / 2
-	if btnW < 22 {
-		btnW = 22
-	}
-
-	confirmStyle := lipgloss.NewStyle().Width(btnW).Align(lipgloss.Center)
-	cancelStyle := lipgloss.NewStyle().Width(btnW).Align(lipgloss.Center)
-	if m.deleteBtnFocus == 0 {
-		confirmStyle = confirmStyle.Background(colRed).Foreground(colBg).Bold(true)
-		cancelStyle = cancelStyle.Background(colPanelBg).Foreground(colText)
-	} else {
-		confirmStyle = confirmStyle.Background(colPanelBg).Foreground(colRed)
-		cancelStyle = cancelStyle.Background(colBlue).Foreground(colBg).Bold(true)
-	}
-
-	btnConfirm := confirmStyle.Render(m.T("del_modal_confirm"))
-	btnCancel := cancelStyle.Render(m.T("del_modal_cancel"))
-	btnRow := lipgloss.JoinHorizontal(lipgloss.Center, btnConfirm, "   ", btnCancel)
-
-	hint := lipgloss.NewStyle().Foreground(colMuted).Align(lipgloss.Center).Width(innerW).
-		Render(m.T("del_modal_hint"))
-
-	var rows []string
-	rows = append(rows, lipgloss.NewStyle().Foreground(colRed).Bold(true).Render(m.T("del_modal_title")))
-	rows = append(rows, "")
-	rows = append(rows, warnLines...)
-	rows = append(rows, "", detailsBox, "", btnRow, "", hint)
-
-	return lipgloss.NewStyle().
-		Border(lipgloss.DoubleBorder()).
-		BorderForeground(colRed).
-		Padding(1, 2).
-		Width(modalW).
-		Render(strings.Join(rows, "\n"))
-}
-
 func (m *Model) renderAIConfigModal() string {
 	modalW := 84
 	if m.width-6 < modalW {
@@ -692,10 +598,9 @@ func (m *Model) renderGlobalConfigModal() string {
 
 	infoLines := []string{
 		m.T("cfg_modal_info_model", m.cfg.ActiveModelLabel()),
-		m.T("cfg_modal_info_period", m.periodSpec),
 		m.T("cfg_modal_info_skill", m.activeSkill),
 		m.T("cfg_modal_info_skills", m.cfg.SkillsDir()),
-		m.T("cfg_modal_info_export", m.cfg.ExportsDir),
+		m.T("cfg_modal_info_export", m.cfg.DataDir),
 		m.T("cfg_modal_info_server", fmt.Sprintf("%s:%d (DC %d)", m.cfg.TelegramServerIP, m.cfg.TelegramServerPort, m.cfg.TelegramDCID)),
 	}
 	var wrappedInfo []string
@@ -741,43 +646,41 @@ func (m *Model) renderHelpModal() string {
 
 	if m.cfg.IsRussian() {
 		lines = append(lines,
-			"  1 - 4               : Вкладки (1:Чат, 2:ИИ и навыки, 3:Архив периода, 4:Логи)",
+			"  1 - 4               : Вкладки (1:Чат, 2:ИИ и навыки, 3:Результат ИИ, 4:Логи)",
 			"  Tab / h / l         : Переключение фокуса между списком чатов и главным окном",
 			"  j / k или Вверх/Вниз: Перемещение курсора / прокрутка активного окна",
-			"  g / G, Ctrl+d/Ctrl+u: Быстрая навигация по списку сообщений или архиву",
+			"  g / G, Ctrl+d/Ctrl+u: Быстрая навигация по списку сообщений или результату ИИ",
 			"  Enter / Space (Чаты): Открыть выбранный чат (только 1 активный чат)",
 			"  \\ или /             : Быстрый Vim-поиск по окну чатов (Enter выбрать, Esc сброс)",
 			"  i / Enter (Вкл. 1)  : Написать сообщение в чат (Enter отправить, Esc отмена)",
-			"  v (Вкл. 1 / 2 / 3)  : Прослушать голос / открыть медиа (QuickLook) / навык",
+			"  v (Вкл. 1 / 2 / 3)  : Прослушать голос / открыть медиа (QuickLook) / навык / отчет",
 			"  Enter (Вкл. 2)      : Включить выбранный ИИ-навык для текущего чата ([AI])",
 			"  x (Вкл. 2)          : Отключить ИИ-инструкции для текущего чата",
-			"  m (Вкл. 2 / 3)      : Изменить персональные ИИ-заметки для текущего чата",
+			"  m (Вкл. 1 / 2 / 3)  : Разовая команда ИИ для текущего чата (запуск / стоп)",
 			"  e / O / o (Вкл. 2)  : Редакт. в $EDITOR (e), macOS редакторе (O), открыть в Finder (o)",
 			"  n / I (Вкл. 2)      : Создать новый навык (n) или импортировать через Finder (I)",
-			"  r (Вкл. 1 / 2 / 3)  : Обновить чат (Вкл. 1) или запустить ИИ-анализ (Вкл. 2/3)",
-			"  p / [ / ] (Вкл. 3)  : Период анализа (p) и переключение архивов чата ([ / ])",
-			"  o / d (Вкл. 3)      : Открыть архив в Finder (o) или удалить архив (d)",
+			"  r (Вкл. 1 / 2 / 3)  : Обновить чат (Вкл. 1) или запустить ИИ-навык (Вкл. 2/3)",
+			"  o (Вкл. 3)          : Показать сохраненный отчет ИИ-навыка в Finder",
 			"  c / C / L           : ИИ-движок (c), Настройки языка (C), Вход по QR (L)",
 			"  q / Esc             : Выход или закрытие модального окна",
 		)
 	} else {
 		lines = append(lines,
-			"  1 - 4               : Switch tabs (1:Live Chat, 2:AI & Skills, 3:Period Archive, 4:Trace)",
+			"  1 - 4               : Switch tabs (1:Live Chat, 2:AI & Skills, 3:AI Output, 4:Trace)",
 			"  Tab / h / l         : Switch focus between Chats sidebar and Main window",
 			"  j / k or Up/Dn      : Move cursor down / up or scroll active view",
 			"  g / G, Ctrl+d/Ctrl+u: Jump to top/bottom or half-page scroll",
 			"  Enter / Space (Chat): Select & open chat in Tab 1 (single-chat selection)",
 			"  \\ or /              : Vim-style search in Chats window (Enter open, Esc clear)",
 			"  i / Enter (Tab 1)   : Compose message in live chat (Enter to send, Esc to cancel)",
-			"  v (Tab 1 / 2 / 3)   : Play voice / QuickLook media on-demand / Preview skill",
-			"  Enter (Tab 2)       : Enable highlighted summary skill for active chat ([AI])",
+			"  v (Tab 1 / 2 / 3)   : Play voice / QuickLook media / Preview skill / QuickLook output",
+			"  Enter (Tab 2)       : Enable highlighted AI skill for active chat ([AI])",
 			"  x (Tab 2)           : Disable/clear AI instructions for active chat",
-			"  m (Tab 2 / 3)       : Edit per-chat AI notes / instructions",
+			"  m (Tab 1 / 2 / 3)   : Run or stop single-shot AI instruction for active chat",
 			"  e / O / o (Tab 2)   : Edit skill in $EDITOR (e), macOS editor (O), or Finder (o)",
 			"  n / I (Tab 2)       : Create new skill in terminal (n) or import via Finder (I)",
-			"  r (Tab 1 / 2 / 3)   : Refresh live chat (Tab 1) or Run AI period parse (Tab 2/3)",
-			"  p / [ / ] (Tab 3)   : Set period window (p) & cycle chat's saved archives ([ / ])",
-			"  o / d (Tab 3)       : Open archive in Finder (o) or delete archive (d)",
+			"  r (Tab 1 / 2 / 3)   : Refresh live chat (Tab 1) or Run active AI skill (Tab 2/3)",
+			"  o (Tab 3)           : Reveal AI skill output markdown file in Finder",
 			"  c / C / L           : AI Engine config (c), Global settings (C), QR Login (L)",
 			"  q / Esc             : Quit or close modal",
 		)

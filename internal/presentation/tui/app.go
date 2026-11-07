@@ -32,10 +32,8 @@ const (
 	modalNone modalKind = iota
 	modalLoginForm
 	modalLoginQR
-	modalPeriod
 	modalPrompt
 	modalHelp
-	modalConfirmDelete
 	modalAIConfig
 	modalNewSkill
 	modalSkillPreview
@@ -132,8 +130,8 @@ type chatSingleShotRunner struct {
 type parseLogMsg string
 
 type parseDoneMsg struct {
-	records []*storage.PeriodSummaryRecord
-	err     error
+	record *storage.SkillOutputRecord
+	err    error
 }
 
 type Model struct {
@@ -145,7 +143,7 @@ type Model struct {
 	height int
 
 	focus       focusArea
-	activeTab   int // 1:Live Chat, 2:AI & Skills, 3:Period Archive, 4:Trace
+	activeTab   int // 1:Live Chat, 2:AI & Skills, 3:AI Output, 4:Trace
 	activeModal modalKind
 
 	// Single-chat selection in full-height sidebar
@@ -171,11 +169,8 @@ type Model struct {
 	lastLiveSync     time.Time
 	liveStreamCancel context.CancelFunc
 
-	// Tab 3: Period Archives for the currently selected chat
-	periods            []storage.PeriodSummaryRecord
-	periodCursor       int
-	periodScrollOffset int
-	mediaCursor        int
+	// Tab 3: Per-chat AI skill execution outputs (persisted in data/chat_skill_outputs.json)
+	skillOutputs map[int64]storage.SkillOutputRecord
 
 	mainScroll int
 
@@ -205,11 +200,8 @@ type Model struct {
 	qrCancel  context.CancelFunc
 	uiEventCh chan tea.Msg
 
-	// Period & Prompt modal input buffers
+	// Prompt & New Skill modal input buffer
 	inputBuffer string
-
-	// Delete confirmation modal button focus (0 = Confirm Delete, 1 = Cancel)
-	deleteBtnFocus int
 
 	// AI Engine Configuration modal state
 	aiFormFields [2]string // 0: AGY CLI Path, 1: AGY Model
@@ -242,22 +234,24 @@ func (m *Model) T(key string, args ...any) string {
 }
 
 func NewModel(cfg *config.AppConfig, aiEngine *ai.Engine, mtSvc *mtproto.Service, forceDemo bool) *Model {
-	if forceDemo {
-		_ = storage.EnsureDemoPeriodFolders(cfg)
-	}
 	chats := make([]storage.ChatInfo, len(storage.DemoChats))
 	copy(chats, storage.DemoChats)
 
 	var selChatID int64
 	var initLiveMsgs []storage.LiveMessage
-	var initPeriods []storage.PeriodSummaryRecord
 	if len(chats) > 0 {
 		selChatID = chats[0].ChatID
 		initLiveMsgs = storage.DemoLiveMessages(chats[0])
-		initPeriods = storage.DiscoverChatPeriodFolders(cfg.ExportsDir, chats[0])
 	}
 
 	chatAICfgs := storage.LoadChatAIConfigs(cfg.DataDir)
+	skillOutputs := storage.LoadChatSkillOutputs(cfg.DataDir)
+	if forceDemo && len(skillOutputs) == 0 {
+		for _, c := range chats {
+			skillOutputs[c.ChatID] = storage.DemoSkillOutput(c, cfg.Language)
+		}
+		_ = storage.SaveChatSkillOutputs(cfg.DataDir, skillOutputs)
+	}
 
 	initLangIdx := 0
 	if cfg.IsRussian() {
@@ -303,7 +297,7 @@ func NewModel(cfg *config.AppConfig, aiEngine *ai.Engine, mtSvc *mtproto.Service
 		liveMessages:      initLiveMsgs,
 		liveMsgCursor:     maxInt(0, len(initLiveMsgs)-1),
 		lastLiveSync:      time.Now(),
-		periods:           initPeriods,
+		skillOutputs:      skillOutputs,
 		statusText:        i18n.T(cfg.Language, "status_ready"),
 		periodSpec:        cfg.DefaultPeriod,
 		runNotes:          cfg.DefaultNotes,
@@ -523,18 +517,16 @@ func (m *Model) toggleChatSendMode() {
 	m.addTrace(fmt.Sprintf("Chat '%s': AI Send Mode set to '%s'", ch.Title, cur.SendMode))
 }
 
-func (m *Model) refreshChatPeriods() {
+func (m *Model) activeSkillOutputRecord() *storage.SkillOutputRecord {
 	ch := m.activeChat()
-	if ch == nil {
-		m.periods = nil
-		m.periodCursor = 0
-		return
+	if ch == nil || m.skillOutputs == nil {
+		return nil
 	}
-	m.periods = storage.DiscoverChatPeriodFolders(m.cfg.ExportsDir, *ch)
-	if m.periodCursor >= len(m.periods) {
-		m.periodCursor = maxInt(0, len(m.periods)-1)
+	rec, ok := m.skillOutputs[ch.ChatID]
+	if !ok || strings.TrimSpace(rec.Output) == "" {
+		return nil
 	}
-	m.mediaCursor = 0
+	return &rec
 }
 
 func (m *Model) selectChatAtIndex(idx int) tea.Cmd {
@@ -548,7 +540,6 @@ func (m *Model) selectChatAtIndex(idx int) tea.Cmd {
 	m.chatInputBuffer = ""
 	m.mainScroll = 0
 	m.syncCurrentChatAISettings()
-	m.refreshChatPeriods()
 	m.liveMessages = storage.DemoLiveMessages(ch)
 	m.liveMsgCursor = maxInt(0, len(m.liveMessages)-1)
 	m.addTrace(fmt.Sprintf("Selected chat '%s' (id=%d)", ch.Title, ch.ChatID))
@@ -935,7 +926,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.chatCursor = 0
 			m.selectedChatID = m.chats[0].ChatID
 			m.syncCurrentChatAISettings()
-			m.refreshChatPeriods()
 			m.statusText = "Live MTProto"
 			m.addTrace(fmt.Sprintf("Loaded %d live dialogs from Telegram.", len(m.chats)))
 			return m, m.loadChatMessagesCmd(m.chats[0])
@@ -950,22 +940,21 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case parseDoneMsg:
 		m.statusBusy = false
 		if msg.err != nil {
-			m.statusText = "Parse error"
-			m.addTrace(fmt.Sprintf("Chat period parse failed: %v", msg.err))
-		} else {
-			m.refreshChatPeriods()
-			if len(msg.records) > 0 && msg.records[0] != nil {
-				for idx, p := range m.periods {
-					if p.FolderPath == msg.records[0].FolderPath {
-						m.periodCursor = idx
-						break
-					}
-				}
+			m.statusText = "Skill error"
+			m.addTrace(fmt.Sprintf("Chat AI skill execution failed: %v", msg.err))
+		} else if msg.record != nil {
+			if m.skillOutputs == nil {
+				m.skillOutputs = make(map[int64]storage.SkillOutputRecord)
+			}
+			m.skillOutputs[msg.record.ChatID] = *msg.record
+			_ = storage.SaveChatSkillOutputs(m.cfg.DataDir, m.skillOutputs)
+			if saved, ok := m.skillOutputs[msg.record.ChatID]; ok {
+				*msg.record = saved
 			}
 			m.activeTab = 3
 			m.mainScroll = 0
-			m.statusText = m.T("parsed_chats", len(msg.records))
-			m.addTrace("Completed period summarization -> switched to Tab 3 (Period Archive).")
+			m.statusText = m.T("parsed_chats", msg.record.Skill)
+			m.addTrace(fmt.Sprintf("Completed AI skill '%s' for '%s' -> switched to Tab 3 (AI Output).", msg.record.Skill, msg.record.ChatTitle))
 		}
 		return m, waitForUIEvent(m.uiEventCh)
 
@@ -983,35 +972,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
-}
-
-func (m *Model) activePeriodRecord() *storage.PeriodSummaryRecord {
-	if len(m.periods) == 0 {
-		return nil
-	}
-	if m.periodCursor < 0 || m.periodCursor >= len(m.periods) {
-		m.periodCursor = 0
-	}
-	return &m.periods[m.periodCursor]
-}
-
-func (m *Model) executeDeleteActivePeriod() {
-	rec := m.activePeriodRecord()
-	if rec == nil || rec.FolderPath == "" {
-		return
-	}
-	targetPath := rec.FolderPath
-	title := rec.ChatTitle
-	if err := storage.DeletePeriodRun(targetPath, m.cfg.ExportsDir); err != nil {
-		m.statusText = "Delete failed"
-		m.addTrace(fmt.Sprintf("Failed to delete period folder %s: %v", targetPath, err))
-		return
-	}
-	m.addTrace(fmt.Sprintf("Deleted period folder and all media subfolders: %s", targetPath))
-	m.refreshChatPeriods()
-	m.mediaCursor = 0
-	m.mainScroll = 0
-	m.statusText = fmt.Sprintf("Deleted %s", sanitizeTerminalText(title))
 }
 
 // SetQRModalForCapture sets the model state to show the QR modal for captures and previews.

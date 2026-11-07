@@ -431,20 +431,13 @@ func Create(dir, name string) (string, error) {
 	}
 	tmpl := fmt.Sprintf(`---
 name: %s
-description: Describe what this skill produces (shown in the Re-Prompt tab)
-# kind: "summary" summarizes a whole chat period.
-#       "media" analyzes single media files; then also set e.g. "media: voice, audio"
-#       (kinds: voice, video_note, audio, video, image, sticker, document, or * for fallback).
+description: Describe what this skill does for the selected chat
 kind: summary
 ---
-Write the instructions for the model here.
+Write the instructions for the AI model here.
 
-For summary skills, the app always asks for JSON with these 4 fields, so describe
-what each one should contain:
-- executive_summary: ...
-- key_decisions: ...
-- voice_media_insights: ...
-- action_items: ...
+You can instruct the model to analyze the conversation, extract decisions, audit code,
+translate messages, or produce any custom output in Tab 3 (AI Output) and live chat replies.
 `, slug)
 	if err := os.WriteFile(path, []byte(tmpl), 0o644); err != nil {
 		return "", err

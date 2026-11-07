@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"telepilot/internal/domain/config"
 	"telepilot/internal/domain/skills"
@@ -328,4 +329,96 @@ Messages and Transcribed Media:
 	out.VoiceMediaInsights = formatMediaAccounting(mediaItems, e.cfg.Language)
 	out.ActionItems = "[x] Archive messages and media into local period folder\n[ ] Review downloaded voice notes, images, and documents"
 	return out
+}
+
+// ExecuteChatSkill runs the selected skill directly on the chat's messages without any rigid 4-card JSON schema,
+// returning the free-form AI output to display in Tab 3 (AI Output).
+func (e *Engine) ExecuteChatSkill(
+	ctx context.Context,
+	chat storage.ChatInfo,
+	skillName string,
+	notes string,
+	messages []storage.LiveMessage,
+) (storage.SkillOutputRecord, error) {
+	list, _ := e.Skills()
+	sk, ok := skills.Find(list, skillName)
+	if !ok {
+		sk = e.SummarySkill(skillName)
+	}
+
+	var msgLines []string
+	start := 0
+	if len(messages) > 100 {
+		start = len(messages) - 100
+	}
+	for _, m := range messages[start:] {
+		sender := strings.TrimSpace(m.Sender)
+		if sender == "" {
+			sender = "User"
+		}
+		text := strings.TrimSpace(m.Text)
+		if m.MediaType != "" {
+			tag := strings.ToUpper(m.MediaType)
+			if text != "" {
+				text = fmt.Sprintf("%s [%s: %s]", text, tag, m.MediaFileName)
+			} else {
+				text = fmt.Sprintf("[%s: %s]", tag, m.MediaFileName)
+			}
+		}
+		if text != "" {
+			msgLines = append(msgLines, fmt.Sprintf("[%s] %s (#%d): %s", m.Timestamp, sender, m.MessageID, text))
+		}
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "You are executing the AI skill %q on the Telegram chat %q.\n\n", sk.Name, chat.Title)
+	fmt.Fprintf(&b, "Follow these skill instructions (skill: %s):\n<skill>\n%s\n</skill>\n", sk.Name, sk.Body)
+	if n := strings.TrimSpace(notes); n != "" {
+		fmt.Fprintf(&b, "\nAdditional per-chat instructions from the user:\n%s\n", n)
+	}
+	if e.cfg.IsRussian() {
+		b.WriteString("\nLanguage requirement: Produce the output in fluent Russian (ru), unless the skill instructions explicitly require another language.\n")
+	} else {
+		b.WriteString("\nLanguage requirement: Produce the output in English (en), unless the skill instructions explicitly require another language.\n")
+	}
+	b.WriteString("\nProvide your output directly in clean, readable plain text / Markdown bullet points following the skill instructions above (do NOT wrap the response in JSON unless the skill explicitly asks for JSON).\n\nChat Messages:\n")
+	b.WriteString(strings.Join(msgLines, "\n"))
+
+	rec := storage.SkillOutputRecord{
+		ChatID:       chat.ChatID,
+		ChatTitle:    chat.Title,
+		Skill:        sk.Name,
+		SkillHash:    sk.Hash,
+		SkillDesc:    sk.Description,
+		Notes:        strings.TrimSpace(notes),
+		ModelUsed:    e.cfg.ActiveModelLabel(),
+		MessageCount: len(messages),
+		CreatedAt:    time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
+	}
+
+	if e.cfg.AgyCLIBin() != "" {
+		out, err := e.callAgyCLI(ctx, b.String(), "")
+		if err != nil {
+			return rec, err
+		}
+		rec.Output = strings.TrimSpace(out)
+		return rec, nil
+	}
+
+	// Deterministic local fallback when agy CLI is not configured
+	var highlights []string
+	for i := 0; i < len(messages) && len(highlights) < 6; i++ {
+		m := messages[i]
+		if strings.TrimSpace(m.Text) != "" {
+			highlights = append(highlights, fmt.Sprintf("• [%s] %s: %s", m.Timestamp, m.Sender, m.Text))
+		}
+	}
+	if e.cfg.IsRussian() {
+		rec.Output = fmt.Sprintf("Выполнен навык %q для чата %q (%d сообщ.):\n\n%s",
+			sk.Name, chat.Title, len(messages), strings.Join(highlights, "\n"))
+	} else {
+		rec.Output = fmt.Sprintf("Executed skill %q on chat %q (%d messages):\n\n%s",
+			sk.Name, chat.Title, len(messages), strings.Join(highlights, "\n"))
+	}
+	return rec, nil
 }

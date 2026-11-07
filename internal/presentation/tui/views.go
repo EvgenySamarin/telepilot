@@ -67,12 +67,10 @@ func (m *Model) renderTopBar() string {
 		}
 	}
 
-	left := fmt.Sprintf(" %s │ %s%s │ %s: %s",
+	left := fmt.Sprintf(" %s │ %s%s",
 		lipgloss.NewStyle().Foreground(statusColor).Bold(true).Render(icon+" "+m.statusText),
 		m.T("active_chat_hdr", lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render(chatTitle)),
 		aiBadge,
-		m.T("period_label"),
-		lipgloss.NewStyle().Foreground(colGreen).Bold(true).Render(m.periodSpec),
 	)
 
 	elapsedSec := int(time.Since(m.startTime).Seconds())
@@ -155,11 +153,9 @@ func (m *Model) renderBottomBar() string {
 		case 3:
 			keys = append(keys,
 				keyPair{"r", m.T("key_run_ai")},
-				keyPair{"p", fmt.Sprintf("%s(%s)", m.T("key_period"), m.periodSpec)},
-				keyPair{"[/]", m.T("key_prev_next_period")},
+				keyPair{"m", m.T("key_notes")},
 				keyPair{"v", m.T("key_quicklook")},
 				keyPair{"o", m.T("key_finder")},
-				keyPair{"d", m.T("key_delete_period")},
 			)
 		}
 		keys = append(keys,
@@ -409,7 +405,7 @@ func (m *Model) renderMainPanel(width, height int) string {
 	}
 
 	var contentLines []string
-	rec := m.activePeriodRecord()
+	rec := m.activeSkillOutputRecord()
 
 	switch m.activeTab {
 	case 2:
@@ -423,7 +419,7 @@ func (m *Model) renderMainPanel(width, height int) string {
 			}
 		}
 	case 3:
-		contentLines = m.renderUnifiedPeriodTab(rec, innerW, visibleRows)
+		contentLines = m.renderSkillOutputTab(rec, innerW, visibleRows)
 		m.resizePending = false
 	case 4:
 		contentLines = m.renderTraceTab(innerW)
@@ -675,21 +671,23 @@ func (m *Model) renderLiveInputBox(chatTitle string, innerW int) []string {
 	return out
 }
 
-// renderUnifiedPeriodTab renders Tab 3: Period Archive Selector + Summary + Media Vault + Transcript collapsed in one view.
-func (m *Model) renderUnifiedPeriodTab(rec *storage.PeriodSummaryRecord, innerW int, visibleRows int) []string {
+// renderSkillOutputTab renders Tab 3: free-form AI Skill Output and execution metadata for the selected chat.
+func (m *Model) renderSkillOutputTab(rec *storage.SkillOutputRecord, innerW int, visibleRows int) []string {
 	ch := m.activeChat()
 	chatTitle := "Selected Chat"
 	if ch != nil {
 		chatTitle = sanitizeTerminalText(ch.Title)
 	}
 
+	var out []string
+	for _, hl := range wrapTextBlock(m.T("output_tab_hdr", chatTitle), innerW) {
+		out = append(out, lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render(padOrTruncate(hl, innerW)))
+	}
+	out = append(out, "")
+
 	if rec == nil {
-		var emptyOut []string
-		for _, hl := range wrapTextBlock(m.T("period_tab_hdr", chatTitle, 0, 0, m.periodSpec), innerW) {
-			emptyOut = append(emptyOut, lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render(padOrTruncate(hl, innerW)))
-		}
-		emptyOut = append(emptyOut, "", truncateSingleLine(m.T("sum_empty"), innerW))
-		return emptyOut
+		out = append(out, truncateSingleLine(m.T("output_empty"), innerW))
+		return out
 	}
 
 	cardW := innerW - 4
@@ -697,215 +695,37 @@ func (m *Model) renderUnifiedPeriodTab(rec *storage.PeriodSummaryRecord, innerW 
 		cardW = 20
 	}
 
-	var out []string
-	for _, hl := range wrapTextBlock(m.T("period_tab_hdr", chatTitle, minInt(m.periodCursor+1, len(m.periods)), len(m.periods), m.periodSpec), innerW) {
-		out = append(out, lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render(padOrTruncate(hl, innerW)))
+	skillHash := rec.SkillHash
+	if skillHash == "" {
+		skillHash = "custom"
 	}
+	outFile := rec.OutputPath
+	if outFile == "" {
+		outFile = "(in-memory)"
+	}
+
+	metaBody := m.T(
+		"output_meta_body",
+		sanitizeTerminalText(rec.ChatTitle),
+		rec.ChatID,
+		rec.Skill,
+		skillHash,
+		rec.ModelUsed,
+		rec.CreatedAt,
+		rec.MessageCount,
+		outFile,
+	)
+	if strings.TrimSpace(rec.SkillDesc) != "" {
+		metaBody += "\nDescription:  " + strings.TrimSpace(rec.SkillDesc)
+	}
+	if strings.TrimSpace(rec.Notes) != "" {
+		metaBody += "\n" + m.T("sum_extra_notes") + strings.TrimSpace(rec.Notes)
+	}
+
+	out = append(out, renderInteriorCard(m.T("output_card_meta"), metaBody, cardW, colBlue)...)
 	out = append(out, "")
 
-	// Period Archive Selector Card for the active chat
-	if len(m.periods) > 0 {
-		var pRows []string
-		for idx, p := range m.periods {
-			prefix := "  "
-			if idx == m.periodCursor {
-				prefix = "▸ "
-			}
-			line := fmt.Sprintf("%s[%d/%d] %s -> %s (%s)  │  %d msgs (%dv %di %dd)  │  Skill: %s",
-				prefix, idx+1, len(m.periods), p.PeriodStart, p.PeriodEnd, p.PeriodSpec,
-				p.TotalMessages, p.VoiceCount, p.ImageCount, p.DocumentCount, p.Skill)
-			pRows = append(pRows, line)
-		}
-		out = append(out, renderInteriorCard(m.T("period_selector_card", chatTitle), strings.Join(pRows, "\n"), cardW, colPurple)...)
-		out = append(out, "")
-	}
-
-	// Section 1: Period Summary Cards
-	out = append(out, m.renderSummaryTab(rec, innerW)...)
-	out = append(out, "")
-
-	// Section 2: Media Vault
-	out = append(out, m.renderMediaVaultSection(rec, innerW)...)
-	out = append(out, "")
-
-	// Section 3: Chronological Message & Voice Transcript
-	out = append(out, m.renderTranscriptTab(rec, innerW)...)
-
-	return out
-}
-
-func (m *Model) renderSummaryTab(rec *storage.PeriodSummaryRecord, innerW int) []string {
-	if rec == nil {
-		return []string{truncateSingleLine(m.T("sum_empty"), innerW)}
-	}
-
-	cardW := innerW - 4
-	if cardW < 20 {
-		cardW = 20
-	}
-
-	var out []string
-	title := lipgloss.NewStyle().Foreground(colText).Bold(true).Render(truncateSingleLine(m.T("sum_hdr", rec.ChatTitle), innerW))
-	meta := lipgloss.NewStyle().Foreground(colMuted).Render(truncateSingleLine(fmt.Sprintf("   ID: %d  │  Created: %s  │  Model: %s", rec.ChatID, rec.CreatedAt, rec.ModelUsed), innerW))
-	out = append(out, title, meta, "")
-
-	statusBody := strings.Join([]string{
-		m.T("sum_status_label", rec.Status),
-		m.T("sum_period_range", rec.PeriodStart, rec.PeriodEnd, rec.PeriodSpec),
-		m.T("sum_accounting", rec.TotalMessages, rec.VoiceCount, rec.ImageCount, rec.DocumentCount),
-		m.T("sum_archive", rec.FolderPath),
-	}, "\n")
-	out = append(out, renderInteriorCard("", statusBody, cardW, colGreen)...)
-	out = append(out, "")
-
-	skillDesc := rec.Skill
-	if skillDesc == "" {
-		skillDesc = m.T("sum_legacy_prompt")
-	}
-	if rec.SkillHash != "" {
-		skillDesc += " (" + rec.SkillHash + ")"
-	}
-	if strings.TrimSpace(rec.Prompt) != "" {
-		skillDesc += "\n" + m.T("sum_extra_notes") + rec.Prompt
-	}
-	out = append(out, renderInteriorCard(m.T("sum_card_skill"), skillDesc, cardW, colBlue)...)
-	out = append(out, "")
-
-	out = append(out, renderInteriorCard(m.T("sum_card_executive"), rec.ExecutiveSummary, cardW, colCyan)...)
-	out = append(out, "")
-
-	out = append(out, renderInteriorCard(m.T("sum_card_decisions"), rec.KeyDecisions, cardW, colYellow)...)
-	out = append(out, "")
-
-	out = append(out, renderInteriorCard(m.T("sum_card_media"), rec.VoiceMediaInsights, cardW, colPurple)...)
-	out = append(out, "")
-
-	out = append(out, renderInteriorCard(m.T("sum_card_actions"), rec.ActionItems, cardW, colGreen)...)
-	return out
-}
-
-func (m *Model) renderMediaVaultSection(rec *storage.PeriodSummaryRecord, innerW int) []string {
-	if rec == nil || len(rec.MediaItems) == 0 {
-		return []string{truncateSingleLine(m.T("media_empty"), innerW)}
-	}
-	if m.mediaCursor < 0 {
-		m.mediaCursor = 0
-	}
-	if m.mediaCursor >= len(rec.MediaItems) {
-		m.mediaCursor = len(rec.MediaItems) - 1
-	}
-
-	cardW := innerW - 4
-	var out []string
-	for _, hl := range wrapTextBlock(m.T("media_hdr", m.mediaCursor+1, len(rec.MediaItems), rec.FolderPath), innerW) {
-		out = append(out, lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render(padOrTruncate(hl, innerW)))
-	}
-	out = append(out, "")
-
-	for idx, it := range rec.MediaItems {
-		tag := "[" + strings.ToUpper(it.MediaType) + "]"
-		if it.MediaType == "document" {
-			tag = "[DOC]"
-		}
-		selPrefix := "  "
-		bCol := colBorder
-		if idx == m.mediaCursor {
-			selPrefix = "▸ "
-			bCol = colCyan
-		}
-		header := fmt.Sprintf("%s%s %s  •  %s  •  %s  (%d KB)",
-			selPrefix, tag, it.FileName, it.Sender, it.Timestamp, it.FileSizeBytes/1024)
-		aiCapture := formatAICaptureText(it.AIText, m.cfg.Language)
-		body := m.T("media_file_lbl", it.FilePath, aiCapture)
-		cardLines := renderInteriorCard(header, body, cardW, bCol)
-		out = append(out, cardLines...)
-		out = append(out, "")
-	}
-	return out
-}
-
-func (m *Model) renderMediaVaultTab(rec *storage.PeriodSummaryRecord, innerW int, visibleRows int) []string {
-	return m.renderMediaVaultSection(rec, innerW)
-}
-
-func (m *Model) renderTranscriptTab(rec *storage.PeriodSummaryRecord, innerW int) []string {
-	if rec == nil || len(rec.Messages) == 0 {
-		return []string{truncateSingleLine(m.T("transcript_empty"), innerW)}
-	}
-	textW := innerW - 12
-	if textW < 16 {
-		textW = 16
-	}
-	var out []string
-	out = append(out, lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render(
-		padOrTruncate(m.T("transcript_hdr", len(rec.Messages)), innerW),
-	), "")
-
-	prevDate := ""
-	prevSender := ""
-	for _, msg := range rec.Messages {
-		msgDate, msgTime := splitDateAndTime(msg.Timestamp)
-		sender := sanitizeTerminalText(msg.Sender)
-		if sender == "" {
-			sender = "Unknown"
-		}
-		accentCol := colBlue
-		if sender == "You" {
-			accentCol = colGreen
-		}
-
-		dateChanged := msgDate != "" && msgDate != prevDate
-		if dateChanged {
-			if len(out) > 2 {
-				out = append(out, "")
-			}
-			out = append(out, renderDateSeparator(msgDate, innerW))
-			prevDate = msgDate
-			prevSender = ""
-		}
-
-		if sender != prevSender {
-			if len(out) > 2 && !dateChanged {
-				out = append(out, "")
-			}
-			senderLine := "   " + lipgloss.NewStyle().Foreground(accentCol).Bold(true).Render(truncateSingleLine(sender, innerW-4))
-			out = append(out, senderLine)
-			prevSender = sender
-		}
-
-		var bodyLines []string
-		if strings.TrimSpace(msg.Text) != "" {
-			bodyLines = append(bodyLines, wrapTextBlock(msg.Text, textW)...)
-		}
-		if msg.MediaType == "voice" || msg.VoiceTranscript != "" {
-			aiCap := formatAICaptureText(msg.VoiceTranscript, m.cfg.Language)
-			bodyLines = append(bodyLines, wrapTextBlock(fmt.Sprintf("📎 [VOICE - %s]: %s", msg.MediaFile, aiCap), textW)...)
-		} else if msg.MediaType != "" || msg.MediaAnalysis != "" {
-			mTag := strings.ToUpper(msg.MediaType)
-			if mTag == "DOCUMENT" {
-				mTag = "DOC"
-			}
-			aiCap := formatAICaptureText(msg.MediaAnalysis, m.cfg.Language)
-			bodyLines = append(bodyLines, wrapTextBlock(fmt.Sprintf("📎 [%s - %s]: %s", mTag, msg.MediaFile, aiCap), textW)...)
-		}
-		if len(bodyLines) == 0 {
-			bodyLines = append(bodyLines, "(empty message)")
-		}
-
-		for i, bl := range bodyLines {
-			timeStr := padOrTruncate(msgTime, 5)
-			if i > 0 {
-				timeStr = "     "
-			}
-			tStyled := lipgloss.NewStyle().Foreground(colMuted).Render("  " + timeStr + " ")
-			barStyled := lipgloss.NewStyle().Foreground(accentCol).Render("│ ")
-			textCol := colText
-			if strings.HasPrefix(bl, "📎 [") {
-				textCol = colYellow
-			}
-			out = append(out, tStyled+barStyled+lipgloss.NewStyle().Foreground(textCol).Render(bl))
-		}
-	}
+	out = append(out, renderInteriorCard(m.T("output_card_result", rec.Skill), rec.Output, cardW, colCyan)...)
 	return out
 }
 
@@ -1027,7 +847,7 @@ func (m *Model) renderTab2Box(boxIdx int, title string, body string, cardW int, 
 }
 
 // renderRePromptTab renders Tab 2: Per-Chat AI Configuration & Skills Library with 2-level box navigation.
-func (m *Model) renderRePromptTab(rec *storage.PeriodSummaryRecord, innerW int) []string {
+func (m *Model) renderRePromptTab(rec *storage.SkillOutputRecord, innerW int) []string {
 	cardW := innerW - 4
 	if cardW < 20 {
 		cardW = 20
@@ -1048,13 +868,13 @@ func (m *Model) renderRePromptTab(rec *storage.PeriodSummaryRecord, innerW int) 
 	var actionsBody string
 	if m.cfg.IsRussian() {
 		actionsBody = strings.Join([]string{
-			"Навыки и архив чата:",
+			"Навыки и результат ИИ:",
 			"    [Enter] Войти в выбранный блок / применить действие (Esc — выйти из блока)",
 			"    [x]     Отключить ИИ для текущего чата и сбросить настройки",
 			"    [v / e] Просмотр навыка (v) или редактирование SKILL.md в $EDITOR (e)",
 			"    [o / O] Показать навык в Finder (o) или открыть в редакторе macOS (O)",
 			"    [n / I] Создать навык в терминале (n) или импортировать через Finder (I)",
-			"    [r]     Запустить ИИ-анализ архива периода для выбранного чата",
+			"    [r]     Запустить активный ИИ-навык для выбранного чата (Вкл. 3)",
 			"Управление живым чатом ИИ:",
 			"    [a]     Автоответ ИИ ([ВКЛ] / [ВЫКЛ]) на входящие сообщения в чате",
 			"    [s]     Режим отправки ИИ: В черновик поля ввода (Enter) или Сразу в чат",
@@ -1063,13 +883,13 @@ func (m *Model) renderRePromptTab(rec *storage.PeriodSummaryRecord, innerW int) 
 		}, "\n")
 	} else {
 		actionsBody = strings.Join([]string{
-			"Skills & Period Archive:",
+			"Skills & AI Output:",
 			"    [Enter] Enter highlighted box / apply option (Esc to exit back to boxes)",
 			"    [x]     Disable AI for selected chat & clear settings",
 			"    [v / e] Preview skill prompt (v) or edit SKILL.md in $EDITOR (e)",
 			"    [o / O] Reveal skill in macOS Finder (o) or open in macOS GUI editor (O)",
 			"    [n / I] Create new skill in terminal (n) or import skill via Finder (I)",
-			"    [r]     Run period archive AI analysis for selected chat",
+			"    [r]     Run active AI skill on selected chat & view result in Tab 3",
 			"Live Chat AI Control:",
 			"    [a]     Toggle AI Auto-Reply ([ON] / [OFF]) for incoming messages",
 			"    [s]     Toggle AI Send Mode (Draft to Compose Box vs Auto-Send)",
@@ -1121,10 +941,10 @@ func (m *Model) renderRePromptTab(rec *storage.PeriodSummaryRecord, innerW int) 
 	var chatAICol lipgloss.Color
 	if chatAIEnabled {
 		chatAICol = colPurple
-		chatAIBody = m.T("skills_chat_enabled", chatCfg.Skill, chatCfg.PeriodSpec, autoReplyLabel, sendModeLabel, runNotesText)
+		chatAIBody = m.T("skills_chat_enabled", chatCfg.Skill, autoReplyLabel, sendModeLabel, runNotesText)
 	} else {
 		chatAICol = colYellow
-		chatAIBody = m.T("skills_chat_disabled", config.DefaultSkillName, m.periodSpec)
+		chatAIBody = m.T("skills_chat_disabled", config.DefaultSkillName)
 	}
 	if m.tab2BoxEntered && m.tab2BoxCursor == 1 {
 		chatAIBody = highlightBox1EnteredOption(chatAIBody, m.tab2ChatOptCursor)
@@ -1239,30 +1059,19 @@ func (m *Model) renderRePromptTab(rec *storage.PeriodSummaryRecord, innerW int) 
 	m.tab2BoxBounds[3] = [2]int{b3Start, len(out)}
 	out = append(out, "")
 
-	// Box 4: Selected Chat Latest Archive & Run Settings Card
+	// Box 4: Selected Chat Latest AI Skill Output Card
 	b4Start := len(out)
 	if rec != nil {
-		pendingAI := 0
-		transcribedAI := 0
-		for _, it := range rec.MediaItems {
-			if formatAICaptureText(it.AIText, m.cfg.Language) == "Requires AI transcription" ||
-				formatAICaptureText(it.AIText, m.cfg.Language) == "Требуется ИИ-транскрипция" {
-				pendingAI++
-			} else {
-				transcribedAI++
-			}
-		}
-
-		periodLines := []string{
-			m.T("skills_period_sel", sanitizeTerminalText(rec.ChatTitle), rec.PeriodStart, rec.PeriodEnd, rec.PeriodSpec),
-			m.T("skills_period_sum", rec.CreatedAt, rec.ModelUsed, rec.Skill),
-			m.T("skills_period_media", len(rec.MediaItems), transcribedAI, pendingAI),
+		preview := truncateSingleLine(strings.TrimSpace(rec.Output), maxInt(24, cardW-8))
+		outputLines := []string{
+			m.T("skills_output_meta", rec.CreatedAt, rec.Skill, rec.ModelUsed, rec.MessageCount),
+			m.T("skills_output_preview", preview),
 			m.T("skills_period_notes", runNotesText),
 		}
-		out = append(out, m.renderTab2Box(4, m.T("skills_card_run"), strings.Join(periodLines, "\n"), cardW, colBlue)...)
+		out = append(out, m.renderTab2Box(4, m.T("skills_card_run"), strings.Join(outputLines, "\n"), cardW, colBlue)...)
 	} else {
-		noPeriodBody := m.T("skills_period_none", runNotesText)
-		out = append(out, m.renderTab2Box(4, m.T("skills_card_run"), noPeriodBody, cardW, colBlue)...)
+		noOutputBody := m.T("skills_output_none", runNotesText)
+		out = append(out, m.renderTab2Box(4, m.T("skills_card_run"), noOutputBody, cardW, colBlue)...)
 	}
 	m.tab2BoxBounds[4] = [2]int{b4Start, len(out)}
 	return out

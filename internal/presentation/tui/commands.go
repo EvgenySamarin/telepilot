@@ -552,7 +552,7 @@ func (m *Model) runSingleShotInstructionCmd(instruction string, appendMode bool)
 	return nil
 }
 
-// runChatAICmd parses and summarizes the currently selected chat for its configured period, skill, and notes.
+// runChatAICmd executes the active AI skill on the currently selected chat and displays its output in Tab 3.
 func (m *Model) runChatAICmd() tea.Cmd {
 	ch := m.activeChat()
 	if ch == nil {
@@ -561,37 +561,36 @@ func (m *Model) runChatAICmd() tea.Cmd {
 	target := *ch
 
 	skillName := config.DefaultSkillName
-	periodSpec := m.periodSpec
+	notes := m.runNotes
 	if cfg, ok := m.activeChatAIConfig(); ok {
 		if cfg.Skill != "" {
 			skillName = cfg.Skill
 		}
-		if cfg.PeriodSpec != "" {
-			periodSpec = cfg.PeriodSpec
+		if cfg.Notes != "" {
+			notes = cfg.Notes
 		}
 	} else if m.activeSkill != "" {
 		skillName = m.activeSkill
 	}
-	if periodSpec == "" {
-		periodSpec = "1m"
-	}
+
+	msgsCopy := make([]storage.LiveMessage, len(m.liveMessages))
+	copy(msgsCopy, m.liveMessages)
 
 	m.statusBusy = true
 	m.jobDone = 0
 	m.jobTotal = 1
-	m.statusText = fmt.Sprintf("Running AI (%s)...", target.Title)
+	m.statusText = fmt.Sprintf("Running skill (%s)...", skillName)
 
 	go func() {
-		ctx := context.Background()
-		m.uiEventCh <- parseLogMsg(fmt.Sprintf("Running AI for '%s' [%s] via skill '%s'...", target.Title, periodSpec, skillName))
-		rec, err := m.mtproto.ParseChatPeriod(ctx, target, periodSpec, skillName, "", func(logLine string) {
-			m.uiEventCh <- parseLogMsg(logLine)
-		})
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		m.uiEventCh <- parseLogMsg(fmt.Sprintf("Running AI skill '%s' on chat '%s' (%d messages)...", skillName, target.Title, len(msgsCopy)))
+		rec, err := m.ai.ExecuteChatSkill(ctx, target, skillName, notes, msgsCopy)
 		if err != nil {
-			m.uiEventCh <- parseDoneMsg{records: nil, err: err}
+			m.uiEventCh <- parseDoneMsg{record: nil, err: err}
 			return
 		}
-		m.uiEventCh <- parseDoneMsg{records: []*storage.PeriodSummaryRecord{rec}, err: nil}
+		m.uiEventCh <- parseDoneMsg{record: &rec, err: nil}
 	}()
 
 	return nil

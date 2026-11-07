@@ -3,7 +3,6 @@ package tui
 import (
 	"fmt"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"unicode/utf8"
 
@@ -148,60 +147,6 @@ func (m *Model) handleModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case modalHelp:
 		if key == "esc" || key == "?" || key == "q" || key == "enter" {
 			m.activeModal = modalNone
-		}
-		return m, nil
-
-	case modalConfirmDelete:
-		switch key {
-		case "esc", "n", "N", "q":
-			m.activeModal = modalNone
-			return m, nil
-		case "h", "left", "k", "up":
-			m.deleteBtnFocus = 0
-			return m, nil
-		case "l", "right", "j", "down":
-			m.deleteBtnFocus = 1
-			return m, nil
-		case "tab", "shift+tab":
-			m.deleteBtnFocus = (m.deleteBtnFocus + 1) % 2
-			return m, nil
-		case "y", "Y", "d":
-			m.executeDeleteActivePeriod()
-			m.activeModal = modalNone
-			return m, nil
-		case "enter":
-			if m.deleteBtnFocus == 0 {
-				m.executeDeleteActivePeriod()
-			}
-			m.activeModal = modalNone
-			return m, nil
-		}
-		return m, nil
-
-	case modalPeriod:
-		switch key {
-		case "esc":
-			m.activeModal = modalNone
-		case "enter":
-			val := strings.TrimSpace(m.inputBuffer)
-			if val == "" {
-				val = "1m"
-			}
-			m.periodSpec = val
-			m.cfg.DefaultPeriod = val
-			if cfg, ok := m.activeChatAIConfig(); ok {
-				m.saveCurrentChatAIConfig(cfg.Skill, cfg.Notes, val, true)
-			}
-			m.addTrace("Updated period window for chat to: " + val)
-			m.activeModal = modalNone
-		case "backspace":
-			if len(m.inputBuffer) > 0 {
-				m.inputBuffer = m.inputBuffer[:len(m.inputBuffer)-1]
-			}
-		default:
-			if len(key) == 1 {
-				m.inputBuffer += key
-			}
 		}
 		return m, nil
 
@@ -625,22 +570,12 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case "[":
-		if m.activeTab == 3 && len(m.periods) > 1 {
-			m.periodCursor = (m.periodCursor - 1 + len(m.periods)) % len(m.periods)
-			m.mediaCursor = 0
-			m.mainScroll = 0
-		} else if m.mainScroll > 0 {
+		if m.mainScroll > 0 {
 			m.mainScroll--
 		}
 
 	case "]":
-		if m.activeTab == 3 && len(m.periods) > 1 {
-			m.periodCursor = (m.periodCursor + 1) % len(m.periods)
-			m.mediaCursor = 0
-			m.mainScroll = 0
-		} else {
-			m.mainScroll++
-		}
+		m.mainScroll++
 
 	case "g":
 		switch m.focus {
@@ -663,8 +598,6 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				} else if m.tab2BoxCursor == 1 {
 					m.tab2ChatOptCursor = 0
 				}
-			case 3:
-				m.mediaCursor = 0
 			}
 			m.mainScroll = 0
 		}
@@ -850,19 +783,6 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.saveCurrentChatAIConfig("", "", m.periodSpec, false)
 				m.addTrace(fmt.Sprintf("Disabled per-chat AI configuration for '%s'", ch.Title))
 			}
-		} else if m.activeTab == 3 {
-			if rec := m.activePeriodRecord(); rec != nil {
-				m.deleteBtnFocus = 0
-				m.activeModal = modalConfirmDelete
-			}
-		}
-
-	case "d":
-		if m.activeTab == 3 {
-			if rec := m.activePeriodRecord(); rec != nil {
-				m.deleteBtnFocus = 0
-				m.activeModal = modalConfirmDelete
-			}
 		}
 
 	case " ":
@@ -901,7 +821,7 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.tab2BoxEntered = true
 					m.scrollTab2ToSkill()
 				case 4:
-					if len(m.periods) > 0 {
+					if m.activeSkillOutputRecord() != nil {
 						m.activeTab = 3
 						m.mainScroll = 0
 					} else if !m.statusBusy {
@@ -977,10 +897,6 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.activeTab == 2 {
 			m.inputBuffer = ""
 			m.activeModal = modalNewSkill
-		} else if m.activeTab == 3 {
-			if rec := m.activePeriodRecord(); rec != nil && len(rec.MediaItems) > 0 {
-				m.mediaCursor = (m.mediaCursor + 1) % len(rec.MediaItems)
-			}
 		}
 
 	case "N":
@@ -992,12 +908,6 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, m.selectChatAtIndex(m.chatCursor)
 			}
 			return m, nil
-		}
-
-	case "p":
-		if m.activeTab == 2 || m.activeTab == 3 {
-			m.activeModal = modalPeriod
-			m.inputBuffer = m.periodSpec
 		}
 
 	case "r":
@@ -1029,10 +939,13 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if m.activeTab == 3 {
-			rec := m.activePeriodRecord()
-			if rec != nil && rec.FolderPath != "" {
-				_ = exec.Command("open", rec.FolderPath).Start()
-				m.addTrace("Opened in Finder: " + rec.FolderPath)
+			rec := m.activeSkillOutputRecord()
+			if rec != nil && rec.OutputPath != "" {
+				if isMacOS() {
+					_ = exec.Command("open", "-R", rec.OutputPath).Start()
+				}
+				m.statusText = "Opened in Finder"
+				m.addTrace("Revealed skill output in Finder: " + rec.OutputPath)
 			}
 		}
 
@@ -1055,25 +968,12 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.activeModal = modalSkillPreview
 			}
 		case 3:
-			rec := m.activePeriodRecord()
-			if rec != nil {
-				if len(rec.MediaItems) > 0 {
-					if m.mediaCursor < 0 || m.mediaCursor >= len(rec.MediaItems) {
-						m.mediaCursor = 0
-					}
-					it := rec.MediaItems[m.mediaCursor]
-					if it.MediaType == "voice" {
-						_ = exec.Command("afplay", it.FilePath).Start()
-						m.addTrace("Playing audio: " + it.FilePath)
-					} else {
-						_ = exec.Command("qlmanage", "-p", it.FilePath).Start()
-						m.addTrace("QuickLook preview: " + it.FilePath)
-					}
-				} else {
-					mdPath := filepath.Join(rec.FolderPath, "summary.md")
-					_ = exec.Command("qlmanage", "-p", mdPath).Start()
-					m.addTrace("QuickLook summary: " + mdPath)
+			rec := m.activeSkillOutputRecord()
+			if rec != nil && rec.OutputPath != "" {
+				if isMacOS() {
+					_ = exec.Command("qlmanage", "-p", rec.OutputPath).Start()
 				}
+				m.addTrace("QuickLook skill output: " + rec.OutputPath)
 			}
 		}
 	}
