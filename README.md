@@ -99,7 +99,8 @@ TelePilot features first-class internationalization with instant switching betwe
 - Press **`C`** (capital C) anytime to open the **Global Configuration** modal with intuitive 2-level box navigation (`Enter` to enter a block, `Esc` to return).
 - Toggle between **English (`En`)** and **Russian (`Ru — Русский`)** using `Space` or `1`/`2` keys.
 - Inspect and manage **Favourite / Pinned Chats**: easily delete chats from your favourites list (especially corner cases where a chat was deleted from another Telegram client and is no longer present in active dialogs).
-- Inspect and manage **Hidden Chats**: hide noisy or private chats directly from the sidebar with **`H`** (or `x`), excluding them from the visible list. When chats are hidden, an indicator item (`👁 X chat(s) hidden`) appears under the chats sidebar. Quickly restore any chat at any time in Block 2 of the Settings modal (`d`/`x`/`u`).
+- Inspect and manage **Hidden Chats**: hide noisy or private chats directly from the sidebar with **`H`** (or `x`), excluding them from the visible list. When chats are hidden, an indicator item (`👁  X chat(s) hidden`) appears under the chats sidebar. Quickly restore any chat at any time in Block 2 of the Settings modal (`d`/`x`/`u`).
+  - **Sync & Performance Optimization**: Hidden chats are completely excluded from MTProto live push streams, background message polling, AI auto-replies, and media caching. Hiding high-traffic channels or noisy group chats significantly reduces network sync pressure, CPU overhead, and UI re-renders.
 - Live localization across all top status bars, sidebars, tabs, cards, modals, and keyboard hints.
 
 <p align="center">

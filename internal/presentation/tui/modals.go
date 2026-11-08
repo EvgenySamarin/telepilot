@@ -695,8 +695,9 @@ func (m *Model) renderGlobalConfigModal() string {
 	// Block 2: Hidden Chats
 	// -------------------------------------------------------------
 	var hiddenBody string
+	descLine := lipgloss.NewStyle().Foreground(colMuted).Italic(true).Render(truncateSingleLine(m.T("cfg_modal_hidden_desc"), cardW-4))
 	if len(m.hiddenChats) == 0 {
-		hiddenBody = lipgloss.NewStyle().Foreground(colMuted).Italic(true).Render(m.T("cfg_modal_hidden_empty"))
+		hiddenBody = descLine + "\n" + lipgloss.NewStyle().Foreground(colMuted).Render(m.T("cfg_modal_hidden_empty"))
 	} else {
 		maxVisibleHidden := 4
 		startHidden := 0
@@ -721,7 +722,7 @@ func (m *Model) renderGlobalConfigModal() string {
 			}
 
 			titleClean := sanitizeTerminalText(hidden.Title)
-			rawItem := fmt.Sprintf("%s👁 %s (ID: %d)%s", prefix, titleClean, hidden.ChatID, actionHint)
+			rawItem := fmt.Sprintf("%s👁  %s (ID: %d)%s", prefix, titleClean, hidden.ChatID, actionHint)
 			innerTextW := cardW - 4
 			if lipgloss.Width(rawItem) > innerTextW {
 				overflow := lipgloss.Width(rawItem) - innerTextW
@@ -729,7 +730,7 @@ func (m *Model) renderGlobalConfigModal() string {
 				if len(titleRunes) > overflow+2 {
 					titleClean = string(titleRunes[:len(titleRunes)-overflow-2]) + ".."
 				}
-				rawItem = fmt.Sprintf("%s👁 %s (ID: %d)%s", prefix, titleClean, hidden.ChatID, actionHint)
+				rawItem = fmt.Sprintf("%s👁  %s (ID: %d)%s", prefix, titleClean, hidden.ChatID, actionHint)
 			}
 
 			var renderedItem string
@@ -746,7 +747,7 @@ func (m *Model) renderGlobalConfigModal() string {
 			)
 			hiddenRows = append(hiddenRows, scrollInfo)
 		}
-		hiddenBody = strings.Join(hiddenRows, "\n")
+		hiddenBody = descLine + "\n" + strings.Join(hiddenRows, "\n")
 	}
 
 	rows = append(rows, m.renderConfigBox(2, m.T("cfg_modal_hidden_title", len(m.hiddenChats)), hiddenBody, cardW, colYellow)...)

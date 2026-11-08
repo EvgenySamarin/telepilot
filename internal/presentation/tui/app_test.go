@@ -1536,3 +1536,70 @@ func TestHiddenChatsConfigModalRestore(t *testing.T) {
 		t.Errorf("expected sidebar notice to disappear after unhiding all chats")
 	}
 }
+
+func TestHiddenChatsSyncExclusion(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := &config.AppConfig{
+		ProjectRoot: tmpDir,
+		DataDir:     tmpDir,
+		Language:    "en",
+	}
+	m := NewModel(cfg, nil, nil, true)
+	if len(m.chats) < 2 {
+		t.Fatalf("expected at least 2 demo chats")
+	}
+
+	hiddenTarget := m.chats[0]
+	visibleTarget := m.chats[1]
+
+	m.hideChat(hiddenTarget.ChatID)
+
+	// 1. loadChatMessagesCmd should return nil for hidden chat
+	cmd := m.loadChatMessagesCmd(hiddenTarget)
+	if cmd != nil {
+		t.Errorf("expected loadChatMessagesCmd to return nil for hidden chat, got %v", cmd)
+	}
+
+	// 2. generateAIChatReplyCmd should return nil for hidden chat
+	replyCmd := m.generateAIChatReplyCmd(hiddenTarget, nil, "draft")
+	if replyCmd != nil {
+		t.Errorf("expected generateAIChatReplyCmd to return nil for hidden chat, got %v", replyCmd)
+	}
+
+	// 3. liveIncomingMsg for hidden chat should be dropped without altering visible messages
+	initLiveCount := len(m.liveMessages)
+	mUpdated, _ := m.Update(liveIncomingMsg{
+		chatID: hiddenTarget.ChatID,
+		msg: storage.LiveMessage{
+			MessageID: 99999,
+			ChatID:    hiddenTarget.ChatID,
+			Sender:    "Hidden Sender",
+			Text:      "Spam message from hidden chat",
+		},
+	})
+	m = mUpdated.(*Model)
+
+	if len(m.liveMessages) != initLiveCount {
+		t.Errorf("liveMessages should not change when message arrives for hidden chat")
+	}
+
+	// 4. liveMessagesLoadedMsg for hidden chat should be ignored
+	mUpdated, _ = m.Update(liveMessagesLoadedMsg{
+		chatID: hiddenTarget.ChatID,
+		messages: []storage.LiveMessage{
+			{MessageID: 88888, Text: "Should not load"},
+		},
+	})
+	m = mUpdated.(*Model)
+	for _, lm := range m.liveMessages {
+		if lm.MessageID == 88888 {
+			t.Errorf("hidden chat messages should not be assigned to m.liveMessages")
+		}
+	}
+
+	// 5. Verify visible target still functions normally
+	visibleCmd := m.loadChatMessagesCmd(visibleTarget)
+	if visibleCmd == nil {
+		t.Errorf("expected non-nil loadChatMessagesCmd for visible chat")
+	}
+}

@@ -70,7 +70,7 @@ var messages = map[string]map[string]string{
 		"sidebar_search_active":  " \\ %s█ [%d/%d]",
 		"sidebar_search_filter":  " \\ %s [%d/%d] (Esc:Clear)",
 		"sidebar_search_no_match": "  No matching chats",
-		"sidebar_hidden_notice":  "  👁 %d chat(s) hidden (check Settings 'C')",
+		"sidebar_hidden_notice":  "  👁  %d chat(s) hidden (check Settings 'C')",
 
 		// Main Panel Tabs (4 Tabs)
 		"tab_details": "─TelePilot",
@@ -132,7 +132,8 @@ var messages = map[string]map[string]string{
 		"cfg_modal_favs_empty":        "  (No favourite chats pinned yet. Press 'p' on any chat to pin it.)",
 		"cfg_modal_favs_deleted":      "[Deleted / Remote]",
 		"cfg_modal_hidden_title":      "Hidden Chats (%d):",
-		"cfg_modal_hidden_empty":      "  (No hidden chats. Press 'H' in the sidebar to hide any chat.)",
+		"cfg_modal_hidden_desc":       "  Excluded from MTProto live sync & polling (reduces network/CPU load).",
+		"cfg_modal_hidden_empty":      "  (No hidden chats. Press 'H' in the sidebar to hide noisy chats & optimize sync.)",
 		"cfg_modal_btn_enter":         "Go Inside Block (Enter)",
 		"cfg_modal_block_nav_hint":    "j/k: Select Block │ Enter: Go Inside │ Esc: Close │ Ctrl+S: Save",
 		"cfg_modal_entered_lang_hint": "j/k or Space: Choose Language │ Enter: Confirm │ Esc: Back to Blocks",
@@ -215,7 +216,7 @@ var messages = map[string]map[string]string{
 		"sidebar_search_active":  " \\ %s█ [%d/%d]",
 		"sidebar_search_filter":  " \\ %s [%d/%d] (Esc:Сброс)",
 		"sidebar_search_no_match": "  Чаты не найдены",
-		"sidebar_hidden_notice":  "  👁 Скрыто чатов: %d (Настройки 'C')",
+		"sidebar_hidden_notice":  "  👁  Скрыто чатов: %d (Настройки 'C')",
 
 		// Main Panel Tabs (4 Tabs)
 		"tab_details": "─TelePilot",
@@ -277,7 +278,8 @@ var messages = map[string]map[string]string{
 		"cfg_modal_favs_empty":          "  (Нет избранных чатов. Нажмите 'p' на любом чате для закрепления.)",
 		"cfg_modal_favs_deleted":        "[Удален / Нет в диалогах]",
 		"cfg_modal_hidden_title":        "Скрытые чаты (%d):",
-		"cfg_modal_hidden_empty":        "  (Нет скрытых чатов. Нажмите 'H' в списке чатов, чтобы скрыть.)",
+		"cfg_modal_hidden_desc":         "  Исключены из синхронизации MTProto и фонового опроса (снижает нагрузку на сеть/ЦПУ).",
+		"cfg_modal_hidden_empty":        "  (Нет скрытых чатов. Нажмите 'H' в списке чатов, чтобы скрыть и оптимизировать опрос.)",
 		"cfg_modal_btn_enter":           "Войти в блок (Enter)",
 		"cfg_modal_block_nav_hint":      "j/k: Выбрать блок │ Enter: Войти в блок │ Esc: Закрыть │ Ctrl+S: Сохранить",
 		"cfg_modal_entered_lang_hint":   "j/k или Пробел: Выбор языка │ Enter: Применить │ Esc: Назад к блокам",

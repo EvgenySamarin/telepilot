@@ -243,6 +243,7 @@ type Model struct {
 	// Hidden chats (persisted in data/hidden_chats.json)
 	hiddenChats   []storage.HiddenChatRecord
 	hiddenChatIDs map[int64]bool
+	hiddenMu      sync.RWMutex
 }
 
 func (m *Model) T(key string, args ...any) string {
@@ -542,6 +543,8 @@ func (m *Model) removeFavoriteChat(chatID int64) {
 }
 
 func (m *Model) isChatHidden(chatID int64) bool {
+	m.hiddenMu.RLock()
+	defer m.hiddenMu.RUnlock()
 	if m.hiddenChatIDs == nil {
 		return false
 	}
@@ -584,10 +587,12 @@ func (m *Model) hideChat(chatID int64) {
 		m.removeFavoriteChat(chatID)
 	}
 
+	m.hiddenMu.Lock()
 	if m.hiddenChatIDs == nil {
 		m.hiddenChatIDs = make(map[int64]bool)
 	}
 	m.hiddenChatIDs[chatID] = true
+	m.hiddenMu.Unlock()
 
 	var title, username, chatType string
 	for _, c := range m.rawChats {
@@ -640,9 +645,12 @@ func (m *Model) unhideChat(chatID int64) {
 	if chatID == 0 {
 		return
 	}
+	m.hiddenMu.Lock()
 	if m.hiddenChatIDs != nil {
 		delete(m.hiddenChatIDs, chatID)
 	}
+	m.hiddenMu.Unlock()
+
 	var updated []storage.HiddenChatRecord
 	var chatTitle string
 	for _, h := range m.hiddenChats {
@@ -1019,13 +1027,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmds []tea.Cmd
 		cmds = append(cmds, liveSyncTickCmd())
 		if !m.statusBusy {
-			if ch := m.activeChat(); ch != nil {
+			if ch := m.activeChat(); ch != nil && !m.isChatHidden(ch.ChatID) {
 				cmds = append(cmds, m.loadChatMessagesCmd(*ch))
 			}
 		}
 		return m, tea.Batch(cmds...)
 
 	case liveMessagesLoadedMsg:
+		if m.isChatHidden(msg.chatID) {
+			return m, nil
+		}
 		if msg.err == nil && msg.chatID == m.selectedChatID && len(msg.messages) > 0 {
 			wasAtBottom := m.liveMsgCursor >= len(m.liveMessages)-1
 			m.liveMessages = msg.messages
@@ -1054,6 +1065,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case liveIncomingMsg:
+		if m.isChatHidden(msg.chatID) {
+			return m, waitForUIEvent(m.uiEventCh)
+		}
 		var autoReplyCmd tea.Cmd
 		if msg.chatID == m.selectedChatID {
 			exists := false

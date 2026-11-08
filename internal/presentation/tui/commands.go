@@ -19,6 +19,9 @@ import (
 )
 
 func (m *Model) generateAIChatReplyCmd(chat storage.ChatInfo, msgs []storage.LiveMessage, sendMode string) tea.Cmd {
+	if m.isChatHidden(chat.ChatID) {
+		return nil
+	}
 	skillName := m.activeSkill
 	notes := m.runNotes
 	if cfg, ok := m.chatAIConfigs[chat.ChatID]; ok && cfg.Enabled {
@@ -217,6 +220,9 @@ func (m *Model) startLiveStreamCmd() tea.Cmd {
 
 	go func() {
 		m.mtproto.StartLiveStream(ctx, func(chatID int64, msg storage.LiveMessage) {
+			if m.isChatHidden(chatID) {
+				return
+			}
 			select {
 			case m.uiEventCh <- liveIncomingMsg{chatID: chatID, msg: msg}:
 			default:
@@ -243,6 +249,9 @@ func (m *Model) checkInitialAuthCmd() tea.Cmd {
 }
 
 func (m *Model) loadChatMessagesCmd(chat storage.ChatInfo) tea.Cmd {
+	if m.isChatHidden(chat.ChatID) {
+		return nil
+	}
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 		defer cancel()
@@ -261,6 +270,9 @@ func (m *Model) sendLiveMessageCmd(chat storage.ChatInfo, text string) tea.Cmd {
 }
 
 func (m *Model) downloadAndOpenLiveMediaCmd(chat storage.ChatInfo, msg storage.LiveMessage) tea.Cmd {
+	if m.isChatHidden(chat.ChatID) {
+		return nil
+	}
 	m.statusText = "Downloading media..."
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -278,6 +290,9 @@ func (m *Model) downloadAndOpenLiveMediaCmd(chat storage.ChatInfo, msg storage.L
 }
 
 func (m *Model) downloadAndRevealLiveMediaInFinderCmd(chat storage.ChatInfo, msg storage.LiveMessage) tea.Cmd {
+	if m.isChatHidden(chat.ChatID) {
+		return nil
+	}
 	m.statusText = "Downloading media for Finder..."
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
