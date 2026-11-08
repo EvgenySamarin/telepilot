@@ -81,8 +81,8 @@ var messages = map[string]map[string]string{
 		"chat_empty":        "  No messages in this chat yet. Press 'i' or Enter to send a message.",
 		"chat_input_idle":   " Press 'i' or Enter to message %s...",
 		"chat_input_active": " Compose to %s (Enter: Send  │  Esc: Cancel):",
-		"chat_media_hint":   "[Press 'v' to download & preview/play]",
-		"chat_media_cached": "[Cached: %s — press 'v' to open]",
+		"chat_media_hint":   "[Press 'v' to preview/play, 'o' in Finder]",
+		"chat_media_cached": "[Cached: %s — 'v' QuickLook • 'o' Finder]",
 
 		// Tab 3 AI Skill Output
 		"output_tab_hdr":     " ▸ %s — AI Skill Output  (r:Run Skill  m:Single-Shot  v:QuickLook  o:Finder)",
@@ -214,8 +214,8 @@ var messages = map[string]map[string]string{
 		"chat_empty":        "  В этом чате пока нет сообщений. Нажмите 'i' или Enter, чтобы написать.",
 		"chat_input_idle":   " Нажмите 'i' или Enter, чтобы написать в %s...",
 		"chat_input_active": " Сообщение в %s (Enter: Отправить  │  Esc: Отмена):",
-		"chat_media_hint":   "[Нажмите 'v' для загрузки и просмотра]",
-		"chat_media_cached": "[В кэше: %s — нажмите 'v' для открытия]",
+		"chat_media_hint":   "[Нажмите 'v' для просмотра, 'o' в Finder]",
+		"chat_media_cached": "[В кэше: %s — 'v' Просмотр • 'o' Finder]",
 
 		// Tab 3 AI Skill Output
 		"output_tab_hdr":     " ▸ %s — Результат ИИ-навыка  (r:Запуск навыка  m:Разовая команда  v:Просмотр  o:Finder)",

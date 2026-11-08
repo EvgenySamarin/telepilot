@@ -32,6 +32,9 @@
 - **Human-Readable Chat Stream**: Clean chronological message timeline with date dividers (`─── YYYY-MM-DD ───`), grouped consecutive senders, aligned `HH:MM │` columns, and inline voice note transcripts (`🎙️`).
 - **Single-Chat Focus & `[AI]` Badge**: Select any dialog in the Chats sidebar with `Enter` or `Space`. Chats with AI enabled are highlighted in purple with an **`[AI]`** badge.
 - **Two-Way Messaging & Real-Time Sync**: Press **`i`** or **`Enter`** in Tab 1 to compose and send messages directly over MTProto, backed by live push updates and automatic background sync.
+- **Native Media QuickLook (`v`) & Finder (`o`)**:
+  - Press **`v`** to QuickLook media files (photos, documents) or play voice notes via `afplay`.
+  - Press **`o`** to reveal cached media files directly in macOS Finder via `open -R`.
 - **AI Reply & Single-Shot Control**:
   - Press **`a`** in Tab 1 (or **`A`** in Tab 2) to generate an on-demand AI reply to the latest conversation context.
   - Press **`m`** in Tab 1 or Tab 2 to launch a standalone **Single-Shot AI Instruction** for the active chat.
@@ -187,7 +190,7 @@ telepilot --qr
 | **`O` / `o`** | Tab 2 (`Skills Library`) | Open skill in macOS GUI editor (`O`) or reveal skill in macOS Finder (`o`) |
 | **`n` / `I`** | Tab 2 (`Skills Library`) | Create new skill / paste path (`n`) or import skill via native macOS Finder picker (`I`) |
 | **`r`** | Tab 1, 2, 3 | Refresh live chat (Tab 1) or run active AI skill on selected chat (Tab 2 & Tab 3) |
-| **`v` / `o`** | Tab 1 & Tab 3 | Play voice / QuickLook media (Tab 1) or QuickLook Markdown output (`v`) / reveal in Finder (`o`) (Tab 3) |
+| **`v` / `o`** | Tab 1, 2, 3 | Play voice / QuickLook media or reveal in Finder (`o`) (Tab 1), preview / Finder (Tab 2), QuickLook / Finder (`o`) (Tab 3) |
 | **`c`** | Global | Open **AI Engine Configuration** modal (Antigravity CLI `agy` or Gemini API) |
 | **`C`** | Global | Open **Global Configuration** modal (switch language between `En` and `Ru`) |
 | **`L`** | Global | Open **MTProto Connection Diagnostics & QR Code Login** modal |

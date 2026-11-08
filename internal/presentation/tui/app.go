@@ -104,11 +104,12 @@ type liveMessageSentMsg struct {
 }
 
 type liveMediaDownloadedMsg struct {
-	chatID    int64
-	messageID int
-	mediaType string
-	filePath  string
-	err       error
+	chatID         int64
+	messageID      int
+	mediaType      string
+	filePath       string
+	revealInFinder bool
+	err            error
 }
 
 type aiChatReplyGeneratedMsg struct {
@@ -825,7 +826,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.liveMessages[i].CachedPath = msg.filePath
 			}
 		}
-		if msg.mediaType == "voice" {
+		if msg.revealInFinder {
+			if isMacOS() {
+				_ = exec.Command("open", "-R", msg.filePath).Start()
+			}
+			m.statusText = "Opened in Finder"
+			m.addTrace("Revealed live media in Finder: " + msg.filePath)
+		} else if msg.mediaType == "voice" {
 			_ = exec.Command("afplay", msg.filePath).Start()
 			m.addTrace("Playing live voice: " + msg.filePath)
 		} else {

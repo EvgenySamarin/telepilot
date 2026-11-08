@@ -136,6 +136,7 @@ func (m *Model) renderBottomBar() string {
 				keyPair{"m", m.T("key_notes")},
 				keyPair{"a", m.T("key_ai_reply")},
 				keyPair{"v", m.T("key_quicklook")},
+				keyPair{"o", m.T("key_finder")},
 				keyPair{"r", m.T("key_refresh")},
 			)
 		case 2:

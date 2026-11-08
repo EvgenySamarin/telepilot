@@ -674,7 +674,7 @@ func (m *Model) renderHelpModal() string {
 			{"e / O / o (Вкл. 2)", "Редакт. в $EDITOR (e), macOS редакторе (O), открыть в Finder (o)"},
 			{"n / I (Вкл. 2)", "Создать новый навык (n) или импортировать через Finder (I)"},
 			{"r (Вкл. 1 / 2 / 3)", "Обновить чат (Вкл. 1) или запустить ИИ-навык (Вкл. 2/3)"},
-			{"o (Вкл. 3)", "Показать сохраненный отчет ИИ-навыка в Finder"},
+			{"o (Вкл. 1 / 2 / 3)", "Показать кэш-медиа (Вкл. 1), навык (Вкл. 2) или отчет (Вкл. 3) в Finder"},
 			{"c / C / L", "ИИ-движок (c), Настройки языка (C), Вход по QR (L)"},
 			{"q / Esc", "Выход или закрытие модального окна"},
 		}
@@ -694,7 +694,7 @@ func (m *Model) renderHelpModal() string {
 			{"e / O / o (Tab 2)", "Edit skill in $EDITOR (e), macOS editor (O), or Finder (o)"},
 			{"n / I (Tab 2)", "Create new skill in terminal (n) or import via Finder (I)"},
 			{"r (Tab 1 / 2 / 3)", "Refresh live chat (Tab 1) or Run active AI skill (Tab 2/3)"},
-			{"o (Tab 3)", "Reveal AI skill output markdown file in Finder"},
+			{"o (Tab 1 / 2 / 3)", "Reveal cached media (Tab 1), skill (Tab 2), or output (Tab 3) in Finder"},
 			{"c / C / L", "AI Engine config (c), Global settings (C), QR Login (L)"},
 			{"q / Esc", "Quit or close modal"},
 		}

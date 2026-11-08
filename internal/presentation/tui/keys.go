@@ -2,7 +2,9 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"unicode/utf8"
 
@@ -941,6 +943,37 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case "o":
+		if m.activeTab == 1 {
+			ch := m.activeChat()
+			if ch != nil {
+				if m.liveMsgCursor >= 0 && m.liveMsgCursor < len(m.liveMessages) {
+					lm := m.liveMessages[m.liveMsgCursor]
+					if lm.MediaType != "" {
+						if lm.CachedPath != "" {
+							if _, err := os.Stat(lm.CachedPath); err == nil {
+								if isMacOS() {
+									_ = exec.Command("open", "-R", lm.CachedPath).Start()
+								}
+								m.statusText = "Opened in Finder"
+								m.addTrace("Revealed cached media in Finder: " + lm.CachedPath)
+								return m, nil
+							}
+						}
+						return m, m.downloadAndRevealLiveMediaInFinderCmd(*ch, lm)
+					}
+				}
+				cacheDir := filepath.Join(m.cfg.DataDir, "live_cache", fmt.Sprintf("%d", ch.ChatID))
+				if _, err := os.Stat(cacheDir); err == nil {
+					if isMacOS() {
+						_ = exec.Command("open", cacheDir).Start()
+					}
+					m.statusText = "Opened in Finder"
+					m.addTrace("Opened chat media cache folder in Finder: " + cacheDir)
+					return m, nil
+				}
+			}
+			return m, nil
+		}
 		if m.activeTab == 2 {
 			m.openSelectedSkillInFinder()
 			return m, nil
@@ -963,6 +996,18 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if ch != nil && m.liveMsgCursor >= 0 && m.liveMsgCursor < len(m.liveMessages) {
 				lm := m.liveMessages[m.liveMsgCursor]
 				if lm.MediaType != "" {
+					if lm.CachedPath != "" {
+						if _, err := os.Stat(lm.CachedPath); err == nil {
+							if lm.MediaType == "voice" {
+								_ = exec.Command("afplay", lm.CachedPath).Start()
+								m.addTrace("Playing live voice: " + lm.CachedPath)
+							} else {
+								_ = exec.Command("qlmanage", "-p", lm.CachedPath).Start()
+								m.addTrace("QuickLook live media: " + lm.CachedPath)
+							}
+							return m, nil
+						}
+					}
 					return m, m.downloadAndOpenLiveMediaCmd(*ch, lm)
 				}
 			}

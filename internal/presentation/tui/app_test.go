@@ -1055,3 +1055,85 @@ func TestClampViewToTerminal(t *testing.T) {
 		t.Fatalf("expected visual width <= 40, got %d", w)
 	}
 }
+
+func TestTab1OpenCachedMediaInFinder(t *testing.T) {
+	tmpDir := t.TempDir()
+	cachedFile := filepath.Join(tmpDir, "test_cached_img.jpg")
+	if err := os.WriteFile(cachedFile, []byte("fake-image"), 0o644); err != nil {
+		t.Fatalf("failed to create fake cached file: %v", err)
+	}
+
+	m := newTestModel(t, "en")
+	m.activeTab = 1
+	m.liveMessages = []storage.LiveMessage{
+		{
+			MessageID:     501,
+			MediaType:     "image",
+			MediaFileName: "test_cached_img.jpg",
+			CachedPath:    cachedFile,
+			Text:          "Here is the screenshot",
+		},
+		{
+			MessageID:     502,
+			MediaType:     "document",
+			MediaFileName: "spec.pdf",
+			Text:          "Specification file",
+		},
+	}
+	m.liveMsgCursor = 0
+
+	// 1. Check hotkey bar in Tab 1 contains "o" Finder key
+	bottomBar := m.renderBottomBar()
+	if !strings.Contains(bottomBar, "Finder") && !strings.Contains(bottomBar, "o:") {
+		t.Errorf("expected Tab 1 bottomBar to contain Finder hotkey, got:\n%s", bottomBar)
+	}
+
+	// 2. Press "o" on cached media
+	mUpdated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'o'}})
+	m = mUpdated.(*Model)
+	if cmd != nil {
+		t.Errorf("expected immediate local action without async command for already cached file")
+	}
+	if m.statusText != "Opened in Finder" {
+		t.Errorf("expected statusText 'Opened in Finder', got %q", m.statusText)
+	}
+	foundTrace := false
+	for _, tr := range m.traceLogs {
+		if strings.Contains(tr, "Revealed cached media in Finder") && strings.Contains(tr, cachedFile) {
+			foundTrace = true
+			break
+		}
+	}
+	if !foundTrace {
+		t.Errorf("expected trace log to record opening in Finder, traces=%v", m.traceLogs)
+	}
+
+	// 3. Move cursor to un-cached media (cursor=1) and press "o" -> should return download command
+	m.liveMsgCursor = 1
+	mUpdated, cmd = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'o'}})
+	m = mUpdated.(*Model)
+	if cmd == nil {
+		t.Errorf("expected async downloadAndRevealLiveMediaInFinderCmd for un-cached media")
+	}
+	if !strings.Contains(m.statusText, "Finder") && !strings.Contains(m.statusText, "Downloading") {
+		t.Errorf("expected downloading status, got %q", m.statusText)
+	}
+
+	// 4. Simulate liveMediaDownloadedMsg with revealInFinder=true
+	downloadedMsg := liveMediaDownloadedMsg{
+		chatID:         m.selectedChatID,
+		messageID:      502,
+		mediaType:      "document",
+		filePath:       cachedFile,
+		revealInFinder: true,
+		err:            nil,
+	}
+	mUpdated, _ = m.Update(downloadedMsg)
+	m = mUpdated.(*Model)
+	if m.liveMessages[1].CachedPath != cachedFile {
+		t.Errorf("expected message CachedPath to be updated to %s, got %s", cachedFile, m.liveMessages[1].CachedPath)
+	}
+	if m.statusText != "Opened in Finder" {
+		t.Errorf("expected statusText 'Opened in Finder', got %q", m.statusText)
+	}
+}

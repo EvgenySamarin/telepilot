@@ -249,11 +249,29 @@ func (m *Model) downloadAndOpenLiveMediaCmd(chat storage.ChatInfo, msg storage.L
 		defer cancel()
 		path, err := m.mtproto.DownloadMessageMedia(ctx, chat, msg)
 		return liveMediaDownloadedMsg{
-			chatID:    chat.ChatID,
-			messageID: msg.MessageID,
-			mediaType: msg.MediaType,
-			filePath:  path,
-			err:       err,
+			chatID:         chat.ChatID,
+			messageID:      msg.MessageID,
+			mediaType:      msg.MediaType,
+			filePath:       path,
+			revealInFinder: false,
+			err:            err,
+		}
+	}
+}
+
+func (m *Model) downloadAndRevealLiveMediaInFinderCmd(chat storage.ChatInfo, msg storage.LiveMessage) tea.Cmd {
+	m.statusText = "Downloading media for Finder..."
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		path, err := m.mtproto.DownloadMessageMedia(ctx, chat, msg)
+		return liveMediaDownloadedMsg{
+			chatID:         chat.ChatID,
+			messageID:      msg.MessageID,
+			mediaType:      msg.MediaType,
+			filePath:       path,
+			revealInFinder: true,
+			err:            err,
 		}
 	}
 }
