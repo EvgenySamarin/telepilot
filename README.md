@@ -3,24 +3,23 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Language-Go%201.24+-00ADD8?style=flat-square&logo=go" alt="Go" />
   <img src="https://img.shields.io/badge/UI-Charm%20Bubble%20Tea-F25D94?style=flat-square" alt="Bubble Tea" />
-  <img src="https://img.shields.io/badge/Theme-Tokyo--Night-7aa2f7?style=flat-square" alt="Tokyo Night" />
   <img src="https://img.shields.io/badge/Platform-macOS-grey?style=flat-square&logo=apple" alt="macOS" />
   <img src="https://img.shields.io/badge/License-MIT-blue?style=flat-square" alt="License" />
 </p>
 
 <p align="center">
-  A lightweight, keyboard-driven <strong>Telegram AI Client & Skill Runner</strong> for macOS built with <strong>pure Go (<a href="https://github.com/gotd/td">gotd/td</a> MTProto)</strong>, <strong><a href="https://github.com/charmbracelet/bubbletea">Charm Bubble Tea</a> & <a href="https://github.com/charmbracelet/lipgloss">Lipgloss</a></strong>, and <strong>Antigravity CLI (<code>agy</code>) / Google Gemini Multimodal AI</strong>.
+  A lightweight, keyboard-driven <strong>Telegram AI Client & Skill Runner</strong> for macOS built with <strong>pure Go (<a href="https://github.com/gotd/td">gotd/td</a> MTProto)</strong>, <strong><a href="https://github.com/charmbracelet/bubbletea">Charm Bubble Tea</a> & <a href="https://github.com/charmbracelet/lipgloss">Lipgloss</a></strong>, and <strong>Antigravity CLI (<code>agy</code>)</strong>.
 </p>
 
 <p align="center">
-  Works <strong>alongside your official Telegram macOS app</strong> (using Telegram's native multi-session capability) to give you a dedicated <strong>Tokyo-Night Terminal UI</strong> with real-time two-way messaging, per-chat AI auto-reply & single-shot instructions, multimodal voice/media analysis, and flexible AI skill execution.
+  Works <strong>alongside your official Telegram macOS app</strong> (using Telegram's native multi-session capability) to give you a dedicated <strong>Terminal UI</strong> with real-time two-way messaging, per-chat AI auto-reply & single-shot instructions, and flexible AI skill execution.
 </p>
 
 ---
 
 <p align="center">
   <a href="#-key-features">
-    <img src="assets/demo_dashboard.svg" alt="TelePilot Tokyo-Night Terminal UI — Live Chat & Per-Chat AI" width="100%" />
+    <img src="assets/demo_dashboard.svg" alt="TelePilot Terminal UI — Live Chat & Per-Chat AI" width="100%" />
   </a>
 </p>
 
@@ -28,41 +27,27 @@
 
 ## ⚡ Key Features
 
-### 1. Real-Time Live Chat & AI Message Control (`[1:Live Chat]`)
-- **Human-Readable Chat Stream**: Clean chronological message timeline with date dividers (`─── YYYY-MM-DD ───`), grouped consecutive senders, aligned `HH:MM │` columns, and inline voice note transcripts (`🎙️`).
-- **Single-Chat Focus & `[AI]` Badge**: Select any dialog in the Chats sidebar with `Enter` or `Space`. Chats with AI enabled are highlighted in purple with an **`[AI]`** badge.
-- **Two-Way Messaging & Real-Time Sync**: Press **`i`** or **`Enter`** in Tab 1 to compose and send messages directly over MTProto, backed by live push updates and automatic background sync.
-- **Native Media QuickLook (`v`) & Finder (`o`)**:
-  - Press **`v`** to QuickLook media files (photos, documents) or play voice notes via `afplay`.
-  - Press **`o`** to reveal cached media files directly in macOS Finder via `open -R`.
-- **AI Reply & Single-Shot Control**:
-  - Press **`a`** in Tab 1 (or **`A`** in Tab 2) to generate an on-demand AI reply to the latest conversation context.
-  - Press **`m`** in Tab 1 or Tab 2 to launch a standalone **Single-Shot AI Instruction** for the active chat.
+### 1. Vim-Style Navigation
+- **Keyboard-First Workflow**: Navigate the entire interface seamlessly using standard Vim motions (`h`, `j`, `k`, `l`, `g`, `G`, `Ctrl+d`, `Ctrl+u`).
+- **Instant Search**: Filter chats by title or username using `/` or `\`.
+- **Card-Based Navigation**: Browse and drill into settings blocks and skill libraries without losing cursor context.
 
 ---
 
-### 2. Per-Chat AI Instructions, Single-Shot Runner & Skills (`[2:AI & Skills]`)
-Configure AI behavior independently for each Telegram chat (persisted in `data/chat_ai_config.json`):
-- **Two-Level Box Navigation**:
-  - **Level 1 (Box Selection)**: Use **`j` / `k`** to move between the 5 cards (`AI Actions & Shortcuts`, `Per-Chat AI Instructions`, `Common AI Engine Configuration`, `Skills Library`, and `Selected Chat Latest AI Skill Output`) without losing cursor focus.
-  - **Level 2 (Inside a Box)**: Press **`Enter`** to drill into the highlighted box (border turns green `◆`) to toggle per-chat AI settings or browse and assign skills; press **`Esc`** (or `Backspace`) to step back out to box selection.
-- **Per-Chat AI Message Control**:
-  - **Colorized Status Badges**: Instant visual clarity with green **`[ON]` / `[ACTIVE]` / `[CONNECTED]`** and red **`[OFF]` / `[NOT CONFIGURED]`** badges across structured indented option lists.
-  - **Auto-Reply (`a`)**: Automatically respond to new incoming messages in the selected chat using AI.
-  - **Send Mode (`s`)**: Toggle between **`Draft to Compose Box (Enter to confirm)`** (safe review before sending) and **`Auto-Send Immediately`** (hands-free autonomous replies).
-- **Standalone Single-Shot AI Instructions (`m`)**:
-  - Give the AI ad-hoc instructions for the current chat (e.g., *"send 3 different messages starting with AI prefix every 15 seconds"* or *"reply politely that I'm in a meeting"*), completely separate from skill execution.
-  - **`Enter`** cancels any previously running instruction for that chat and starts the new single-shot immediately; **`Ctrl+A`** appends/queues onto the currently running instruction; **`Ctrl+X`** stops and clears the active runner.
-- **Modular Skills Library (`.agents/skills/`)**:
-  - Pre-installed skills (`period-summary`, `decisions-log`, `standup-digest`, `voice-transcribe`, `document-summarize`, `image-describe`, `video-describe`).
-  - **macOS Finder & Editor Integration**:
-    - Press **`v`** to preview a skill's `SKILL.md` in-TUI.
-    - Press **`e`** to edit `SKILL.md` in terminal `$EDITOR` (e.g. `nano`, `vim`).
-    - Press **`O`** to open the skill in your macOS default GUI editor.
-    - Press **`o`** to reveal the skill or `.agents/skills/` folder directly in macOS Finder.
-    - Press **`I`** to open the native macOS Finder file picker to import external skill files or folders.
-    - Press **`n`** to scaffold a new skill or paste/drag an existing path.
-    - **Live Auto-Reload**: Any skills added, edited, or deleted in Finder or an external editor are detected and reloaded automatically in real time.
+### 2. Live Chat & AI Messaging
+- **Real-Time Messaging**: Send and receive Telegram messages instantly with live push updates.
+- **Chat Selection & Active AI Status**: Select any chat from the sidebar. Chats with active AI assistance are clearly highlighted.
+- **Native Media Previews & macOS Finder**: Play audio messages, preview photos and documents via QuickLook, or reveal files in Finder.
+- **On-Demand AI Replies & Custom Instructions**: Request an immediate AI response to conversation context, or run targeted single-shot instructions.
+
+---
+
+### 3. Per-Chat AI Settings & Skills Library
+Configure AI behavior independently for each Telegram conversation:
+- **Autonomous Auto-Reply**: Automatically generate AI responses to incoming messages in chosen chats.
+- **Flexible Send Modes**: Choose between drafting messages into the compose box for manual review or sending immediately.
+- **Single-Shot Instructions**: Provide ad-hoc, temporary tasks for a chat without changing permanent settings.
+- **Modular Skills Library**: Run, author, preview, or import Markdown skills (`SKILL.md`) with automatic hot-reloading. Default skills are seeded on initial launch and preserve user deletions.
 
 <p align="center">
   <img src="assets/skills_browser.svg" alt="TelePilot Per-Chat AI Instructions & 2-Level Box Navigation" width="100%" />
@@ -74,15 +59,11 @@ Configure AI behavior independently for each Telegram chat (persisted in `data/c
 
 ---
 
-### 3. AI Skill Output & Execution Reports (`[3:AI Output]`)
-Run any skill on the selected chat's messages and view its natural output in Tab 3:
-- **Free-Form AI Output**: Unconstrained, natural output formatted by your active skill (e.g. `standup-digest`, `decisions-log`, `document-summarize`, `period-summary`, or any custom skill in `.agents/skills/`) without forcing rigid schemas.
-- **Skill & Execution Metadata**: Clear breakdown of the active skill, skill hash, model used, timestamp, message count, and output file path (`data/outputs/<chat>_output.md`).
-- **One-Key Skill Execution (`r`)**: Press **`r`** anywhere in Tab 2 or Tab 3 to run the active skill directly on the selected chat. Upon completion, TelePilot switches directly to Tab 3 to display the result.
-- **Native macOS QuickLook (`v`) & Finder (`o`)**:
-  - Press **`v`** to view the generated Markdown report in your default macOS viewer.
-  - Press **`o`** to reveal the output Markdown file in macOS Finder via `open -R`.
-- **Persistent Storage**: Latest skill results are saved per-chat in `data/chat_skill_outputs.json` and persisted as Markdown files in `data/outputs/`.
+### 4. AI Skill Output & Reports
+Run specialized skills across conversation history and inspect structured results:
+- **One-Action Skill Execution**: Execute the assigned skill on chat history and review the generated report.
+- **Detailed Metadata**: Inspect execution timestamps, active model, analyzed message count, and export paths.
+- **Exported Reports**: Automatically saved as clean Markdown files that can be opened in QuickLook or revealed in Finder.
 
 <p align="center">
   <img src="assets/skill_output.svg" alt="TelePilot AI Skill Output & Execution Report" width="100%" />
@@ -94,27 +75,22 @@ Run any skill on the selected chat's messages and view its natural output in Tab
 
 ---
 
-### 4. Global Configuration, Bilingual Language Switcher, Favourite & Hidden Chats (`C`)
-TelePilot features first-class internationalization with instant switching between English and Russian, along with dedicated Favourite / Pinned and Hidden Chats management:
-- Press **`C`** (capital C) anytime to open the **Global Configuration** modal with intuitive 2-level box navigation (`Enter` to enter a block, `Esc` to return).
-- Toggle between **English (`En`)** and **Russian (`Ru — Русский`)** using `Space` or `1`/`2` keys.
-- Inspect and manage **Favourite / Pinned Chats**: easily delete chats from your favourites list (especially corner cases where a chat was deleted from another Telegram client and is no longer present in active dialogs).
-- Inspect and manage **Hidden Chats**: hide noisy or private chats directly from the sidebar with **`H`** (or `x`), excluding them from the visible list. When chats are hidden, an indicator item (`👁  X chat(s) hidden`) appears under the chats sidebar. Quickly restore any chat at any time in Block 2 of the Settings modal (`d`/`x`/`u`).
-  - **Sync & Performance Optimization**: Hidden chats are completely excluded from MTProto live push streams, background message polling, AI auto-replies, and media caching. Hiding high-traffic channels or noisy group chats significantly reduces network sync pressure, CPU overhead, and UI re-renders.
-- **Reset Default AI Skills (`Ctrl+R`)**: One-click restore for all bundled default skills from binary memory back into `.agents/skills/` without affecting custom skills.
-- Live localization across all top status bars, sidebars, tabs, cards, modals, and keyboard hints.
+### 5. Global Preferences & Chat Management
+- **Localization Support**: Full UI localization across all views and dialogs (currently supports EN and RU).
+- **Pinned / Favourite Chats**: Keep your most important conversations pinned to the top of the chat list.
+- **Hidden Chats**: Hide noisy or inactive chats to keep your workspace focused.
+  - *Sync Optimization*: Hidden chats are excluded from background polling, push updates, and AI auto-replies, reducing network and CPU overhead.
+- **Restore Default Skills**: Re-extract bundled default skills from binary memory at any time without affecting custom skills.
 
 <p align="center">
-  <img src="assets/language_config.svg" alt="TelePilot Global Configuration & Language Switcher" width="100%" />
+  <img src="assets/language_config.svg" alt="TelePilot Global Configuration & Chat Management" width="100%" />
 </p>
 
 ---
 
-### 5. Instant Phone QR Pairing & MTProto Diagnostics (`L` or `--qr`)
-Sign in with your phone camera in seconds:
-- Press **`L`** anytime in the TUI (or launch with `telepilot --qr`).
-- Live rendered Unicode QR code block right in your terminal with automatic MTProto DC ping and connection diagnostics.
-- Works alongside your existing Telegram macOS desktop app without terminating existing sessions.
+### 6. Phone QR Login
+- Quick and secure authentication by scanning a terminal QR code with your phone.
+- Multi-session MTProto connection that runs alongside your official Telegram desktop app.
 
 <p align="center">
   <img src="assets/qr_login.svg" alt="TelePilot MTProto QR Code Login Modal" width="100%" />
@@ -132,7 +108,7 @@ data/
 ├── chat_skill_outputs.json  # Cached AI skill outputs & execution metadata per chat
 ├── favorite_chats.json      # Persisted favourite / pinned chats list
 ├── hidden_chats.json        # Persisted hidden chats list
-└── outputs/                 # Exported Markdown output files (<chat_slug>_output.md) for QuickLook (v) & Finder (o)
+└── outputs/                 # Exported Markdown output files (<chat_slug>_output.md) for QuickLook & Finder
 
 .agents/skills/              # Modular AI skills (SKILL.md) loaded dynamically with live reload
 ├── decisions-log/
@@ -170,7 +146,7 @@ Launch directly into the QR code pairing modal:
 ```bash
 telepilot --qr
 ```
-1. Paste your `TELEGRAM_API_ID` & `TELEGRAM_API_HASH` (from [my.telegram.org/apps](https://my.telegram.org/apps)) and configure your AI engine (`agy` CLI or `GEMINI_API_KEY`).
+1. Paste your `TELEGRAM_API_ID` & `TELEGRAM_API_HASH` (from [my.telegram.org/apps](https://my.telegram.org/apps)) and configure your AI engine (Antigravity CLI `agy`).
 2. On your phone, open **Telegram → Settings → Devices → Link Desktop Device** and scan the QR code rendered in your terminal.
 
 ---
@@ -199,8 +175,8 @@ telepilot --qr
 | **`n` / `I`** | Tab 2 (`Skills Library`) | Create new skill / paste path (`n`) or import skill via native macOS Finder picker (`I`) |
 | **`r`** | Tab 1, 2, 3 | Refresh live chat (Tab 1) or run active AI skill on selected chat (Tab 2 & Tab 3) |
 | **`v` / `o`** | Tab 1, 2, 3 | Play voice / QuickLook media or reveal in Finder (`o`) (Tab 1), preview / Finder (Tab 2), QuickLook / Finder (`o`) (Tab 3) |
-| **`c`** | Global | Open **AI Engine Configuration** modal (Antigravity CLI `agy` or Gemini API) |
-| **`C`** | Global | Open **Global Configuration** modal (language switch & favourite/pinned chats management) |
+| **`c`** | Global | Open **AI Engine Configuration** modal (Antigravity CLI `agy`) |
+| **`C`** | Global | Open **Global Configuration** modal (localization, favourite & hidden chats) |
 | **`Ctrl+R`** | Global Config (`C`) | Reset/restore bundled default AI skills from binary memory into `.agents/skills/` |
 | **`L`** | Global | Open **MTProto Connection Diagnostics & QR Code Login** modal |
 | **`?` / `q`** | Global | Show Help modal (`?`) / Quit (`q`) |

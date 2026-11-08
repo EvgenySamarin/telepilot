@@ -201,6 +201,16 @@ func main() {
 	storage.EnsureDemoPeriodFolders(cfg)
 	_ = skills.EnsureDefaults(cfg.SkillsDir())
 
+	favs := []storage.FavoriteChatRecord{
+		{ChatID: 101, Title: "Product Design & Specs", ChatType: "channel", PinnedAt: "2026-11-08 12:00:00"},
+		{ChatID: 102, Title: "Founders Weekly Sync", ChatType: "chat", PinnedAt: "2026-11-08 12:05:00"},
+	}
+	_ = storage.SaveFavoriteChats(cfg.DataDir, favs)
+	hidden := []storage.HiddenChatRecord{
+		{ChatID: 999, Title: "Crypto News & Signals (Spam)", ChatType: "channel", HiddenAt: "2026-11-08 12:10:00"},
+	}
+	_ = storage.SaveHiddenChats(cfg.DataDir, hidden)
+
 	aiEng := ai.NewEngine(cfg)
 	mtSvc := mtproto.NewService(cfg, aiEng)
 
@@ -229,7 +239,7 @@ func main() {
 		m = mUpdated.(*tui.Model)
 
 		view := m.View()
-		saveScreen(view, cols, rows, "telepilot — Tokyo-Night Terminal UI (Live Chat & Per-Chat AI)", "demo_dashboard", assetsDir)
+		saveScreen(view, cols, rows, "telepilot — Terminal UI (Live Chat & Per-Chat AI)", "demo_dashboard", assetsDir)
 	}
 
 	// 2. Per-Chat AI & Skills (Tab 2: AI & Skills with 2-Level Box Navigation)
@@ -303,14 +313,15 @@ func main() {
 
 	// 6. Global Configuration & Language Selector (Press 'C')
 	{
+		cfgRows := 44
 		m := tui.NewModel(cfg, aiEng, mtSvc, true)
-		mUpdated, _ := m.Update(tea.WindowSizeMsg{Width: cols, Height: rows})
+		mUpdated, _ := m.Update(tea.WindowSizeMsg{Width: cols, Height: cfgRows})
 		m = mUpdated.(*tui.Model)
 
-		m.SetGlobalConfigModalForCapture(1)
+		m.SetGlobalConfigModalForCapture(0)
 
 		view := m.View()
-		saveScreen(view, cols, rows, "telepilot — Global Configuration & Language Switcher (En / Ru)", "language_config", assetsDir)
+		saveScreen(view, cols, cfgRows, "telepilot — Global Configuration, Favourite & Hidden Chats (En / Ru)", "language_config", assetsDir)
 	}
 
 	// 7. Embedded Skill Preview & In-TUI Editing (Press 'v' or 'e' in Tab 2)
