@@ -290,16 +290,14 @@ func (m *Model) renderSidebar(width, totalHeight int) string {
 			cleanTitle := sanitizeTerminalText(c.Title)
 			rawRow := fmt.Sprintf("%s%s %s%s (%d)", cursor, selMark, aiTag, cleanTitle, c.UnreadCount)
 
-			var formatted string
+			formatted := renderRunningLine(rawRow, innerW, isFocusedRow, m.marqueeTick)
 			if isFocusedRow {
-				formatted = marqueeSingleLine(rawRow, innerW, m.marqueeTick)
 				fg := colCyan
 				if hasAI {
 					fg = colPurple
 				}
 				formatted = lipgloss.NewStyle().Foreground(fg).Bold(true).Background(colHighlight).Width(innerW).Render(formatted)
 			} else {
-				formatted = padOrTruncate(rawRow, innerW)
 				switch {
 				case hasAI && isSelected:
 					formatted = lipgloss.NewStyle().Foreground(colPurple).Bold(true).Render(formatted)
@@ -386,6 +384,7 @@ func (m *Model) renderMainPanel(width, height int) string {
 	m.lastVisibleRows = visibleRows
 
 	if m.activeTab == 1 {
+		m.resizePending = false
 		liveLines := clampLinesToWidth(m.renderLiveChatTab(innerW, visibleRows), innerW)
 		if len(liveLines) > visibleRows {
 			liveLines = liveLines[:visibleRows]
@@ -477,12 +476,16 @@ func (m *Model) renderLiveChatTab(innerW, visibleRows int) []string {
 			hdrText += fmt.Sprintf("  │  [AI: %s • Manual('a') • %s]", cfg.Skill, modeTag)
 		}
 	}
-	hdrLine := lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render(padOrTruncate(hdrText, innerW))
+	var hdrLines []string
+	for _, hl := range wrapTextBlock(hdrText, innerW) {
+		hdrLines = append(hdrLines, lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render(padOrTruncate(hl, innerW)))
+	}
 
 	inputBoxLines := m.renderLiveInputBox(chatTitle, innerW)
-	msgViewportH := visibleRows - 2 - len(inputBoxLines)
-	if msgViewportH < 3 {
-		msgViewportH = 3
+	hdrHeight := len(hdrLines) + 1
+	msgViewportH := visibleRows - hdrHeight - len(inputBoxLines)
+	if msgViewportH < 1 {
+		msgViewportH = 1
 	}
 
 	textW := innerW - 12
@@ -630,7 +633,8 @@ func (m *Model) renderLiveChatTab(innerW, visibleRows int) []string {
 	}
 
 	var out []string
-	out = append(out, hdrLine, strings.Repeat(" ", innerW))
+	out = append(out, hdrLines...)
+	out = append(out, strings.Repeat(" ", innerW))
 	out = append(out, sliced...)
 	out = append(out, inputBoxLines...)
 	return out
@@ -1032,7 +1036,8 @@ func (m *Model) renderRePromptTab(rec *storage.SkillOutputRecord, innerW int) []
 				fixedW = 2 + 10 + 1 + nameW + 1 + kindW + 1
 				descW = maxInt(6, innerTextW-fixedW)
 			}
-			desc := padRightVisual(truncateSingleLine(sk.Description, descW), descW)
+			isSkillActive := m.activeTab == 2 && idx == m.skillCursor && (inSkillsBox || m.tab2BoxCursor == 3 || m.focus == focusMain)
+			desc := renderRunningLine(sk.Description, descW, isSkillActive, m.marqueeTick)
 
 			var row string
 			if hashPart != "" {
@@ -1079,7 +1084,10 @@ func (m *Model) renderRePromptTab(rec *storage.SkillOutputRecord, innerW int) []
 
 func (m *Model) renderTraceTab(innerW int) []string {
 	var out []string
-	out = append(out, lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render(padOrTruncate(m.T("trace_hdr"), innerW)), "")
+	for _, hl := range wrapTextBlock(m.T("trace_hdr"), innerW) {
+		out = append(out, lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render(padOrTruncate(hl, innerW)))
+	}
+	out = append(out, "")
 	for _, line := range m.traceLogs {
 		out = append(out, "  "+truncateSingleLine(line, innerW-4))
 	}

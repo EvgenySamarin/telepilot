@@ -231,6 +231,18 @@ func sanitizeTerminalText(s string) string {
 	return strings.TrimSpace(b.String())
 }
 
+// renderRunningLine returns an animated marquee string if active and text exceeds width,
+// otherwise returns text padded or truncated to width.
+func renderRunningLine(text string, width int, active bool, tick int) string {
+	if width <= 0 {
+		return ""
+	}
+	if active {
+		return marqueeSingleLine(text, width, tick)
+	}
+	return padRightVisual(truncateSingleLine(text, width), width)
+}
+
 func marqueeSingleLine(text string, width int, tick int) string {
 	clean := strings.ReplaceAll(text, "\n", " ")
 	if lipgloss.Width(clean) <= width {
@@ -313,7 +325,8 @@ func wrapTextBlock(text string, width int) []string {
 		}
 		indentPrefix := strings.Repeat(" ", leadSpaces)
 		contIndent := indentPrefix
-		if leadSpaces == 0 && (strings.HasPrefix(para, "▸ ") || strings.HasPrefix(para, "▼ ") || strings.HasPrefix(para, " ▸ ")) {
+		trimmed := strings.TrimLeft(para, " ")
+		if strings.HasPrefix(trimmed, "▸ ") || strings.HasPrefix(trimmed, "▼ ") {
 			contIndent = "    "
 		}
 

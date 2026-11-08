@@ -5,8 +5,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"telepilot/internal/domain/ai"
 	"telepilot/internal/domain/config"
@@ -760,5 +762,132 @@ func TestSkillOutputTabAndObsoleteArchiveHotkeysRemoved(t *testing.T) {
 	}
 	if _, err := os.Stat(savedRec.OutputPath); err != nil {
 		t.Errorf("expected markdown output file to exist at %s: %v", savedRec.OutputPath, err)
+	}
+}
+
+func TestWindowResizePreservesTab1TitleHighlights(t *testing.T) {
+	m := newTestModel(t, "en")
+	m.activeTab = 1
+	m.focus = focusMain
+
+	// Ensure active chat has title like user's screenshot
+	if len(m.chats) > 0 {
+		m.chats[m.chatCursor].Title = "Daniil Vinogradov"
+		m.chats[m.chatCursor].ChatType = "dm"
+	}
+
+	// 1. Resize to 101x27 (exact terminal geometry from user's screenshot)
+	mUpdated, _ := m.Update(tea.WindowSizeMsg{Width: 101, Height: 27})
+	m = mUpdated.(*Model)
+
+	view := m.View()
+	lines := strings.Split(view, "\n")
+	if len(lines) > 27 {
+		t.Errorf("view height %d exceeds terminal height 27 at 101x27", len(lines))
+	}
+
+	// Previously "Sync: Push + 15s" was cropped to "Sync.. ." due to padOrTruncate on single line
+	if !strings.Contains(view, "Sync: Push") || !strings.Contains(view, "15s") {
+		t.Errorf("expected full sync status 'Sync: Push + 15s' without cropping at 101x27, got:\n%s", view)
+	}
+	if strings.Contains(view, "Sync..") {
+		t.Errorf("found cropped sync status 'Sync..' in view at 101x27:\n%s", view)
+	}
+
+	// 2. Enable Per-Chat AI Config with auto-reply and resize narrower to 85x26
+	ch := m.activeChat()
+	if ch != nil {
+		m.chatAIConfigs[ch.ChatID] = storage.ChatAIConfig{
+			ChatID:    ch.ChatID,
+			Skill:     "decisions-log",
+			Enabled:   true,
+			AutoReply: true,
+			SendMode:  "draft",
+		}
+	}
+	mUpdated, _ = m.Update(tea.WindowSizeMsg{Width: 85, Height: 26})
+	m = mUpdated.(*Model)
+
+	viewNarrow := m.View()
+	linesNarrow := strings.Split(viewNarrow, "\n")
+	if len(linesNarrow) > 26 {
+		t.Errorf("view height %d exceeds terminal height 26 at 85x26", len(linesNarrow))
+	}
+
+	if !strings.Contains(viewNarrow, "Daniil Vinogradov") {
+		t.Errorf("expected chat title 'Daniil Vinogradov' to be preserved, got:\n%s", viewNarrow)
+	}
+	if !strings.Contains(viewNarrow, "Sync: Push + 15s") {
+		t.Errorf("expected 'Sync: Push + 15s' to wrap cleanly on narrow window, got:\n%s", viewNarrow)
+	}
+	if !strings.Contains(viewNarrow, "AI: decisions-log") {
+		t.Errorf("expected AI badge 'AI: decisions-log' to wrap cleanly on narrow window, got:\n%s", viewNarrow)
+	}
+}
+
+func TestRenderRunningLineReusableAndSkillLibraryMarquee(t *testing.T) {
+	// 1. Unit tests for the reusable renderRunningLine function
+	longDesc := "Comprehensive executive summary and overview of the chat"
+	shortDesc := "Short summary"
+
+	// Short text when active: fits width, does not scroll, visual width exact
+	sActive := renderRunningLine(shortDesc, 20, true, 0)
+	if lipgloss.Width(sActive) != 20 {
+		t.Errorf("expected width 20, got %d", lipgloss.Width(sActive))
+	}
+	if !strings.HasPrefix(sActive, shortDesc) {
+		t.Errorf("expected short text to be unchanged, got %q", sActive)
+	}
+
+	// Long text when inactive: truncated with ".." and padded to exact width
+	sInactive := renderRunningLine(longDesc, 20, false, 0)
+	if lipgloss.Width(sInactive) != 20 {
+		t.Errorf("expected width 20, got %d", lipgloss.Width(sInactive))
+	}
+	if !strings.HasSuffix(strings.TrimSpace(sInactive), "..") {
+		t.Errorf("expected inactive long text to end with '..', got %q", sInactive)
+	}
+
+	// Long text when active: animated marquee running line progresses with tick
+	tick0 := renderRunningLine(longDesc, 20, true, 0)
+	tick10 := renderRunningLine(longDesc, 20, true, 10)
+	if lipgloss.Width(tick0) != 20 || lipgloss.Width(tick10) != 20 {
+		t.Errorf("expected width 20 on both ticks, got %d and %d", lipgloss.Width(tick0), lipgloss.Width(tick10))
+	}
+	if tick0 == tick10 {
+		t.Errorf("expected marquee text to advance between tick 0 and tick 10, got identical: %q", tick0)
+	}
+
+	// 2. Integration test in Tab 2 Box 3 Skills Library
+	m := newTestModel(t, "en")
+	m.activeTab = 2
+	m.focus = focusMain
+	m.tab2BoxCursor = 3
+	m.tab2BoxEntered = true
+	m.skillCursor = 0
+
+	mUpdated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	m = mUpdated.(*Model)
+
+	// Verify that the hovered skill description is running
+	view0 := m.View()
+	// Advance ticks and verify marquee updates in TUI View
+	for i := 0; i < 8; i++ {
+		mUpdated, _ = m.Update(tickMsg(time.Now()))
+		m = mUpdated.(*Model)
+	}
+	view8 := m.View()
+	if view0 == view8 {
+		t.Errorf("expected Tab 2 Box 3 skill library marquee to advance across ticks")
+	}
+
+	// Moving skill cursor with 'j' resets marqueeTick to 0
+	mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	m = mUpdated.(*Model)
+	if m.marqueeTick != 0 {
+		t.Errorf("expected marqueeTick to reset to 0 after cursor move, got %d", m.marqueeTick)
+	}
+	if m.skillCursor != 1 {
+		t.Errorf("expected skillCursor to advance to 1, got %d", m.skillCursor)
 	}
 }

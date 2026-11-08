@@ -530,6 +530,7 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.tab2BoxCursor = 0
 		m.tab2BoxEntered = false
 		m.mainScroll = 0
+		m.marqueeTick = 0
 		m.syncSkillsFromDisk()
 	case "3":
 		m.activeTab = 3
@@ -594,6 +595,7 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.mainScroll = 0
 				} else if m.tab2BoxCursor == 3 {
 					m.skillCursor = 0
+					m.marqueeTick = 0
 					m.scrollTab2ToBox(3)
 				} else if m.tab2BoxCursor == 1 {
 					m.tab2ChatOptCursor = 0
@@ -621,6 +623,7 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.scrollTab2ToBox(4)
 				} else if m.tab2BoxCursor == 3 && len(m.skillList) > 0 {
 					m.skillCursor = len(m.skillList) - 1
+					m.marqueeTick = 0
 					m.scrollTab2ToBox(3)
 				} else if m.tab2BoxCursor == 1 {
 					m.tab2ChatOptCursor = 3
@@ -691,6 +694,7 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				} else if m.tab2BoxCursor == 3 {
 					if m.skillCursor > 0 {
 						m.skillCursor--
+						m.marqueeTick = 0
 					}
 					m.scrollTab2ToSkill()
 				}
@@ -730,6 +734,7 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				} else if m.tab2BoxCursor == 3 {
 					if m.skillCursor < len(m.skillList)-1 {
 						m.skillCursor++
+						m.marqueeTick = 0
 					}
 					m.scrollTab2ToSkill()
 				}
@@ -819,6 +824,7 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.activeModal = modalAIConfig
 				case 3:
 					m.tab2BoxEntered = true
+					m.marqueeTick = 0
 					m.scrollTab2ToSkill()
 				case 4:
 					if m.activeSkillOutputRecord() != nil {
@@ -838,6 +844,7 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					// Jump to Skills Library box to pick active skill
 					m.tab2BoxCursor = 3
 					m.tab2BoxEntered = true
+					m.marqueeTick = 0
 					m.scrollTab2ToSkill()
 				case 1:
 					m.toggleChatAutoReply()
