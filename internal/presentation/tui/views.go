@@ -127,7 +127,10 @@ func (m *Model) renderBottomBar() string {
 			{"\\", m.T("key_search_chats")},
 		}
 		if m.focus == focusChats {
-			keys = append(keys, keyPair{"Enter/Space", m.T("key_select_chat")})
+			keys = append(keys,
+				keyPair{"Enter/Space", m.T("key_select_chat")},
+				keyPair{"p/f", m.T("key_pin_chat")},
+			)
 		}
 		switch m.activeTab {
 		case 1:
@@ -279,6 +282,7 @@ func (m *Model) renderSidebar(width, totalHeight int) string {
 			isSelected := c.ChatID == m.selectedChatID
 			isFocusedRow := m.focus == focusChats && m.chatCursor == chatIdx
 			hasAI := m.isChatAIEnabled(c.ChatID)
+			isPinned := m.isChatPinned(c.ChatID)
 
 			selMark := "( )"
 			if isSelected {
@@ -288,12 +292,16 @@ func (m *Model) renderSidebar(width, totalHeight int) string {
 			if isFocusedRow {
 				cursor = "▸ "
 			}
+			pinTag := ""
+			if isPinned {
+				pinTag = "📌 "
+			}
 			aiTag := ""
 			if hasAI {
 				aiTag = "[AI] "
 			}
 			cleanTitle := sanitizeTerminalText(c.Title)
-			rawRow := fmt.Sprintf("%s%s %s%s (%d)", cursor, selMark, aiTag, cleanTitle, c.UnreadCount)
+			rawRow := fmt.Sprintf("%s%s %s%s%s (%d)", cursor, selMark, pinTag, aiTag, cleanTitle, c.UnreadCount)
 
 			formatted := renderRunningLine(rawRow, innerW, isFocusedRow, m.marqueeTick)
 			if isFocusedRow {

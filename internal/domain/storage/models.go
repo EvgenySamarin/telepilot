@@ -9,6 +9,15 @@ type ChatInfo struct {
 	Username    string `json:"username"`
 }
 
+// FavoriteChatRecord represents a user-pinned / favourite chat persisted across sessions.
+type FavoriteChatRecord struct {
+	ChatID   int64  `json:"chat_id"`
+	Title    string `json:"title"`
+	Username string `json:"username,omitempty"`
+	ChatType string `json:"chat_type,omitempty"`
+	PinnedAt string `json:"pinned_at,omitempty"`
+}
+
 type MediaItemRecord struct {
 	MessageID     int    `json:"message_id"`
 	MediaType     string `json:"media_type"` // "voice" | "image" | "document"

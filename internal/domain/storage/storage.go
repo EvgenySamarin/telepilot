@@ -15,6 +15,37 @@ func ChatAIConfigFilePath(dataDir string) string {
 	return filepath.Join(dataDir, "chat_ai_config.json")
 }
 
+func FavoriteChatsFilePath(dataDir string) string {
+	return filepath.Join(dataDir, "favorite_chats.json")
+}
+
+func LoadFavoriteChats(dataDir string) []FavoriteChatRecord {
+	path := FavoriteChatsFilePath(dataDir)
+	data, err := os.ReadFile(path)
+	if err != nil || len(data) == 0 {
+		return nil
+	}
+	var list []FavoriteChatRecord
+	if err := json.Unmarshal(data, &list); err == nil {
+		return list
+	}
+	return nil
+}
+
+func SaveFavoriteChats(dataDir string, favs []FavoriteChatRecord) error {
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		return err
+	}
+	if favs == nil {
+		favs = []FavoriteChatRecord{}
+	}
+	bytes, err := json.MarshalIndent(favs, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(FavoriteChatsFilePath(dataDir), bytes, 0o644)
+}
+
 func LoadChatAIConfigs(dataDir string) map[int64]ChatAIConfig {
 	out := make(map[int64]ChatAIConfig)
 	path := ChatAIConfigFilePath(dataDir)

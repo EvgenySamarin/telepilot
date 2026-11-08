@@ -555,7 +555,7 @@ func (m *Model) renderAIConfigModal() string {
 }
 
 func (m *Model) renderGlobalConfigModal() string {
-	modalW := 84
+	modalW := 88
 	if m.width-6 < modalW {
 		modalW = m.width - 6
 	}
@@ -569,7 +569,12 @@ func (m *Model) renderGlobalConfigModal() string {
 	rows = append(rows, lipgloss.NewStyle().Foreground(colYellow).Bold(true).Render(truncateSingleLine(banner, innerW)))
 	rows = append(rows, "")
 
-	langLabel := lipgloss.NewStyle().Foreground(colBlue).Bold(true).Render(m.T("cfg_modal_lang"))
+	// Section 1: Language
+	langHdrFg := colBlue
+	if m.cfgSection == 0 {
+		langHdrFg = colCyan
+	}
+	langLabel := lipgloss.NewStyle().Foreground(langHdrFg).Bold(true).Render(m.T("cfg_modal_lang"))
 	rows = append(rows, langLabel)
 
 	optW := innerW - 4
@@ -595,6 +600,78 @@ func (m *Model) renderGlobalConfigModal() string {
 	btnEn := enStyle.Render(enPrefix + "[1] En — English (Default)")
 	btnRu := ruStyle.Render(ruPrefix + "[2] Ru — Русский (Russian)")
 	rows = append(rows, btnEn, btnRu, "")
+
+	// Section 2: Favourite / Pinned Chats
+	favHdrFg := colBlue
+	if m.cfgSection == 1 {
+		favHdrFg = colCyan
+	}
+	favHdr := lipgloss.NewStyle().Foreground(favHdrFg).Bold(true).Render(m.T("cfg_modal_favs_title", len(m.favoriteChats)))
+	rows = append(rows, favHdr)
+
+	if len(m.favoriteChats) == 0 {
+		emptyRow := lipgloss.NewStyle().Foreground(colMuted).Italic(true).Render(m.T("cfg_modal_favs_empty"))
+		rows = append(rows, emptyRow, "")
+	} else {
+		chatExists := make(map[int64]bool, len(m.chats))
+		for _, c := range m.chats {
+			chatExists[c.ChatID] = true
+		}
+
+		maxVisibleFavs := 4
+		startFav := 0
+		if m.cfgFavCursor >= maxVisibleFavs {
+			startFav = m.cfgFavCursor - maxVisibleFavs + 1
+		}
+		endFav := minInt(len(m.favoriteChats), startFav+maxVisibleFavs)
+
+		var favRows []string
+		for i := startFav; i < endFav; i++ {
+			fav := m.favoriteChats[i]
+			isCursor := m.cfgSection == 1 && i == m.cfgFavCursor
+			prefix := "  "
+			if isCursor {
+				prefix = "▸ "
+			}
+
+			exists := chatExists[fav.ChatID]
+			statusStr := ""
+			if !exists {
+				statusStr = " " + m.T("cfg_modal_favs_deleted")
+			}
+
+			actionHint := ""
+			if isCursor {
+				actionHint = "  [d/x: Remove]"
+			}
+
+			titleClean := sanitizeTerminalText(fav.Title)
+			rawItem := fmt.Sprintf("%s📌 %s (ID: %d)%s%s", prefix, titleClean, fav.ChatID, statusStr, actionHint)
+
+			itemStyle := lipgloss.NewStyle().Width(optW).Padding(0, 1)
+			if isCursor {
+				if !exists {
+					itemStyle = itemStyle.Background(colHighlight).Foreground(colRed).Bold(true)
+				} else {
+					itemStyle = itemStyle.Background(colHighlight).Foreground(colCyan).Bold(true)
+				}
+			} else {
+				if !exists {
+					itemStyle = itemStyle.Background(colPanelBg).Foreground(colRed)
+				} else {
+					itemStyle = itemStyle.Background(colPanelBg).Foreground(colText)
+				}
+			}
+			favRows = append(favRows, itemStyle.Render(padOrTruncate(rawItem, optW)))
+		}
+		if len(m.favoriteChats) > maxVisibleFavs {
+			scrollInfo := lipgloss.NewStyle().Foreground(colMuted).Render(
+				fmt.Sprintf("  [%d/%d favourite chats — use j/k to navigate]", m.cfgFavCursor+1, len(m.favoriteChats)),
+			)
+			favRows = append(favRows, scrollInfo)
+		}
+		rows = append(rows, strings.Join(favRows, "\n"), "")
+	}
 
 	infoLines := []string{
 		m.T("cfg_modal_info_model", m.cfg.ActiveModelLabel()),
@@ -628,7 +705,11 @@ func (m *Model) renderGlobalConfigModal() string {
 	btnRow2 := lipgloss.JoinHorizontal(lipgloss.Center, btnEsc)
 	rows = append(rows, btnRow1, "", btnRow2, "")
 
-	hint := lipgloss.NewStyle().Foreground(colMuted).Align(lipgloss.Center).Width(innerW).Render(m.T("cfg_modal_hint"))
+	hintText := m.T("cfg_modal_hint")
+	if m.cfgSection == 1 {
+		hintText = m.T("cfg_modal_favs_hint")
+	}
+	hint := lipgloss.NewStyle().Foreground(colMuted).Align(lipgloss.Center).Width(innerW).Render(hintText)
 	rows = append(rows, hint)
 
 	return lipgloss.NewStyle().
@@ -665,6 +746,7 @@ func (m *Model) renderHelpModal() string {
 			{"j / k или Вверх/Вниз", "Перемещение курсора / прокрутка активного окна"},
 			{"g / G, Ctrl+d/Ctrl+u", "Быстрая навигация по списку сообщений или результату ИИ"},
 			{"Enter / Space (Чаты)", "Открыть выбранный чат (только 1 активный чат)"},
+			{"p / f (Чаты)", "Закрепить/открепить чат наверху списка"},
 			{"\\ или /", "Быстрый Vim-поиск по окну чатов (Enter выбрать, Esc сброс)"},
 			{"i / Enter (Вкл. 1)", "Написать сообщение в чат (Enter отправить, Esc отмена)"},
 			{"v (Вкл. 1 / 2 / 3)", "Прослушать голос / открыть медиа (QuickLook) / навык / отчет"},
@@ -685,6 +767,7 @@ func (m *Model) renderHelpModal() string {
 			{"j / k or Up/Dn", "Move cursor down / up or scroll active view"},
 			{"g / G, Ctrl+d/Ctrl+u", "Jump to top/bottom or half-page scroll"},
 			{"Enter / Space (Chat)", "Select & open chat in Tab 1 (single-chat selection)"},
+			{"p / f (Chat)", "Pin / unpin favourite chat on top of list"},
 			{"\\ or /", "Vim-style search in Chats window (Enter open, Esc clear)"},
 			{"i / Enter (Tab 1)", "Compose message in live chat (Enter to send, Esc to cancel)"},
 			{"v (Tab 1 / 2 / 3)", "Play voice / QuickLook media / Preview skill / QuickLook output"},

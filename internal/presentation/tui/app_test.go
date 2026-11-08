@@ -1137,3 +1137,208 @@ func TestTab1OpenCachedMediaInFinder(t *testing.T) {
 		t.Errorf("expected statusText 'Opened in Finder', got %q", m.statusText)
 	}
 }
+
+func TestFavoriteChatsPinningAndPersistence(t *testing.T) {
+	m := newTestModel(t, "en")
+	if len(m.chats) < 3 {
+		t.Fatalf("expected at least 3 chats, got %d", len(m.chats))
+	}
+
+	// 1. Initial state: no pinned chats
+	if len(m.favoriteChats) != 0 {
+		t.Fatalf("expected 0 initial favorite chats, got %d", len(m.favoriteChats))
+	}
+
+	// Highlight chat at index 2
+	m.chatCursor = 2
+	targetChat := m.chats[2]
+	targetID := targetChat.ChatID
+	targetTitle := targetChat.Title
+
+	// 2. Press 'p' in focusChats -> pins chat and moves it to top
+	m.focus = focusChats
+	mUpdated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	m = mUpdated.(*Model)
+
+	if !m.isChatPinned(targetID) {
+		t.Errorf("expected chat %d to be pinned", targetID)
+	}
+	if len(m.favoriteChats) != 1 {
+		t.Fatalf("expected 1 favorite chat, got %d", len(m.favoriteChats))
+	}
+	if m.chats[0].ChatID != targetID {
+		t.Errorf("expected pinned chat %d to be at index 0, got %d", targetID, m.chats[0].ChatID)
+	}
+	if m.chatCursor != 0 {
+		t.Errorf("expected chatCursor to follow pinned chat to index 0, got %d", m.chatCursor)
+	}
+
+	// Verify sidebar rendering contains pin icon
+	view := m.View()
+	if !strings.Contains(view, "📌") {
+		t.Errorf("expected sidebar view to render pin icon 📌, got:\n%s", view)
+	}
+	if !strings.Contains(view, targetTitle) {
+		t.Errorf("expected sidebar view to contain chat title %q", targetTitle)
+	}
+
+	// Verify persistence in dataDir
+	saved := storage.LoadFavoriteChats(m.cfg.DataDir)
+	if len(saved) != 1 || saved[0].ChatID != targetID {
+		t.Errorf("expected persisted favorite chat %d, got %v", targetID, saved)
+	}
+
+	// 3. Pin a second chat (the one now at index 2)
+	m.chatCursor = 2
+	secondChat := m.chats[2]
+	secondID := secondChat.ChatID
+
+	mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}})
+	m = mUpdated.(*Model)
+
+	if !m.isChatPinned(secondID) {
+		t.Errorf("expected second chat %d to be pinned", secondID)
+	}
+	if len(m.favoriteChats) != 2 {
+		t.Fatalf("expected 2 favorite chats, got %d", len(m.favoriteChats))
+	}
+	// Both targetID and secondID must be at indices 0 and 1
+	if m.chats[0].ChatID != targetID || m.chats[1].ChatID != secondID {
+		t.Errorf("expected pinned chats at top [0=%d, 1=%d], got [0=%d, 1=%d]",
+			targetID, secondID, m.chats[0].ChatID, m.chats[1].ChatID)
+	}
+
+	// 4. Simulate dialogsLoadedMsg from Telegram MTProto: pinned chats must stay on top!
+	freshTelegramDialogs := []storage.ChatInfo{
+		{ChatID: 11111, Title: "Random Telegram Group", ChatType: "group"},
+		{ChatID: secondID, Title: secondChat.Title, ChatType: secondChat.ChatType},
+		{ChatID: 22222, Title: "Another Dialog", ChatType: "dm"},
+		{ChatID: targetID, Title: targetTitle, ChatType: targetChat.ChatType},
+	}
+	mUpdated, _ = m.Update(dialogsLoadedMsg{chats: freshTelegramDialogs})
+	m = mUpdated.(*Model)
+
+	if m.chats[0].ChatID != targetID || m.chats[1].ChatID != secondID {
+		t.Errorf("expected pinned chats to remain on top after live dialogs load: got [0=%d, 1=%d]",
+			m.chats[0].ChatID, m.chats[1].ChatID)
+	}
+
+	// 5. Unpin first chat using 'p'
+	m.chatCursor = 0
+	mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	m = mUpdated.(*Model)
+
+	if m.isChatPinned(targetID) {
+		t.Errorf("expected chat %d to be unpinned", targetID)
+	}
+	if len(m.favoriteChats) != 1 {
+		t.Errorf("expected 1 favorite chat remaining, got %d", len(m.favoriteChats))
+	}
+	savedAfterUnpin := storage.LoadFavoriteChats(m.cfg.DataDir)
+	if len(savedAfterUnpin) != 1 || savedAfterUnpin[0].ChatID != secondID {
+		t.Errorf("expected only chat %d persisted, got %v", secondID, savedAfterUnpin)
+	}
+}
+
+func TestFavoriteChatsConfigWindowManagementAndDeletedCornerCases(t *testing.T) {
+	m := newTestModel(t, "en")
+	if len(m.chats) == 0 {
+		t.Fatalf("expected non-empty chats")
+	}
+
+	// Pin active chat (Chat A)
+	activeChatID := m.chats[0].ChatID
+	m.togglePinChat(activeChatID)
+
+	// Corner case: A chat was pinned earlier, but was subsequently deleted from another Telegram client.
+	// Telegram will no longer return it in dialogs, so it is missing from m.chats.
+	deletedChatID := int64(888777666)
+	deletedRecord := storage.FavoriteChatRecord{
+		ChatID:   deletedChatID,
+		Title:    "Obsolete Project (Deleted on Mobile)",
+		ChatType: "group",
+		PinnedAt: "2026-11-01 10:00:00",
+	}
+	m.favoriteChats = append(m.favoriteChats, deletedRecord)
+	m.favoriteChatIDs[deletedChatID] = true
+	_ = storage.SaveFavoriteChats(m.cfg.DataDir, m.favoriteChats)
+
+	if len(m.favoriteChats) != 2 {
+		t.Fatalf("expected 2 favorite chats, got %d", len(m.favoriteChats))
+	}
+
+	// 1. Open Configuration Window with capital 'C'
+	mUpdated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'C'}})
+	m = mUpdated.(*Model)
+
+	if m.activeModal != modalGlobalConfig {
+		t.Fatalf("expected modalGlobalConfig, got %v", m.activeModal)
+	}
+	if m.cfgSection != 0 {
+		t.Errorf("expected initial cfgSection to be 0 (Language), got %d", m.cfgSection)
+	}
+
+	// 2. Render modal: must display deleted corner-case chat and [Deleted / Remote] indicator
+	modalView := m.renderGlobalConfigModal()
+	if !strings.Contains(modalView, "Obsolete Project (Deleted on Mobile)") {
+		t.Errorf("expected modal to show deleted chat title, got:\n%s", modalView)
+	}
+	if !strings.Contains(modalView, "[Deleted / Remote]") {
+		t.Errorf("expected modal to show [Deleted / Remote] badge for missing chat, got:\n%s", modalView)
+	}
+
+	// 3. Switch to Favourite Chats section using Tab
+	mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = mUpdated.(*Model)
+	if m.cfgSection != 1 {
+		t.Errorf("expected Tab to switch cfgSection to 1, got %d", m.cfgSection)
+	}
+	if m.cfgFavCursor != 0 {
+		t.Errorf("expected cfgFavCursor to be 0, got %d", m.cfgFavCursor)
+	}
+
+	// Move cursor down to the deleted chat at index 1
+	mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	m = mUpdated.(*Model)
+	if m.cfgFavCursor != 1 {
+		t.Errorf("expected cfgFavCursor to be 1, got %d", m.cfgFavCursor)
+	}
+
+	// 4. Press 'd' to delete the remotely deleted chat from favorite list
+	mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	m = mUpdated.(*Model)
+
+	if m.isChatPinned(deletedChatID) {
+		t.Errorf("expected deletedChatID %d to be removed from pinned IDs", deletedChatID)
+	}
+	if len(m.favoriteChats) != 1 {
+		t.Fatalf("expected 1 favorite chat remaining after deletion, got %d", len(m.favoriteChats))
+	}
+	if m.favoriteChats[0].ChatID != activeChatID {
+		t.Errorf("expected remaining chat to be %d, got %d", activeChatID, m.favoriteChats[0].ChatID)
+	}
+
+	// Check persistence
+	persisted := storage.LoadFavoriteChats(m.cfg.DataDir)
+	if len(persisted) != 1 || persisted[0].ChatID != activeChatID {
+		t.Errorf("persisted favorite chats should only have activeChatID, got %v", persisted)
+	}
+
+	// 5. Delete the remaining chat with 'x'
+	mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	m = mUpdated.(*Model)
+
+	if len(m.favoriteChats) != 0 {
+		t.Errorf("expected 0 favorite chats after deleting all, got %d", len(m.favoriteChats))
+	}
+	if m.cfgSection != 0 {
+		t.Errorf("expected cfgSection to reset to 0 when favorite list becomes empty, got %d", m.cfgSection)
+	}
+
+	// 6. Close modal with Enter
+	mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = mUpdated.(*Model)
+	if m.activeModal != modalNone {
+		t.Errorf("expected modal to close with Enter, got %v", m.activeModal)
+	}
+}

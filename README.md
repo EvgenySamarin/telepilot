@@ -94,10 +94,11 @@ Run any skill on the selected chat's messages and view its natural output in Tab
 
 ---
 
-### 4. Global Configuration & Bilingual Language Switcher (`C`)
-TelePilot features first-class internationalization with instant switching between English and Russian:
+### 4. Global Configuration, Bilingual Language Switcher & Favourite Chats (`C`)
+TelePilot features first-class internationalization with instant switching between English and Russian, along with dedicated Favourite / Pinned Chats management:
 - Press **`C`** (capital C) anytime to open the **Global Configuration** modal.
 - Toggle between **English (`En`)** and **Russian (`Ru — Русский`)** using `Space` or `1`/`2` keys.
+- Inspect and manage **Favourite / Pinned Chats**: easily delete chats from your favourites list (especially corner cases where a chat was deleted from another Telegram client and is no longer present in active dialogs).
 - Live localization across all top status bars, sidebars, tabs, cards, modals, and keyboard hints.
 
 <p align="center">
@@ -126,6 +127,7 @@ TelePilot stores per-chat configurations and AI skill outputs cleanly in `data/`
 data/
 ├── chat_ai_config.json      # Per-chat AI status, active skill, auto-reply, send mode & single-shot state
 ├── chat_skill_outputs.json  # Cached AI skill outputs & execution metadata per chat
+├── favorite_chats.json      # Persisted favourite / pinned chats list
 └── outputs/                 # Exported Markdown output files (<chat_slug>_output.md) for QuickLook (v) & Finder (o)
 
 .agents/skills/              # Modular AI skills (SKILL.md) loaded dynamically with live reload
@@ -178,6 +180,7 @@ telepilot --qr
 | **`j` / `k`**, **`g` / `G`** | Global | Vim-style vertical navigation (single line, top, bottom) |
 | **`\` / `/`** | Chats Sidebar | Vim-style search through chats by title or username (`Enter`: Open, `Esc`: Clear) |
 | **`Enter` / `Space`** | Sidebar | Open and select the highlighted chat `(●)` |
+| **`p` / `f`** | Chats Sidebar / Global | Pin or unpin favourite chat on top of the chats list (`📌`) |
 | **`i` / `Enter`** | Tab 1 (`Live Chat`) | Focus the compose box to write and send a message (`Esc` to cancel) |
 | **`a`** | Tab 1 (`Live Chat`) | Generate an on-demand AI reply for the active chat |
 | **`m`** | Tab 1, 2, 3 | Open **Single-Shot AI Instruction** modal (`Enter`: Replace & Run, `Ctrl+A`: Append, `Ctrl+X`: Stop) |
@@ -192,7 +195,7 @@ telepilot --qr
 | **`r`** | Tab 1, 2, 3 | Refresh live chat (Tab 1) or run active AI skill on selected chat (Tab 2 & Tab 3) |
 | **`v` / `o`** | Tab 1, 2, 3 | Play voice / QuickLook media or reveal in Finder (`o`) (Tab 1), preview / Finder (Tab 2), QuickLook / Finder (`o`) (Tab 3) |
 | **`c`** | Global | Open **AI Engine Configuration** modal (Antigravity CLI `agy` or Gemini API) |
-| **`C`** | Global | Open **Global Configuration** modal (switch language between `En` and `Ru`) |
+| **`C`** | Global | Open **Global Configuration** modal (language switch & favourite/pinned chats management) |
 | **`L`** | Global | Open **MTProto Connection Diagnostics & QR Code Login** modal |
 | **`?` / `q`** | Global | Show Help modal (`?`) / Quit (`q`) |
 

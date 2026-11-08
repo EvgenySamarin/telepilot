@@ -227,7 +227,13 @@ type Model struct {
 	resizePending     bool      // true right after WindowSizeMsg to realign scroll offsets
 
 	// Global Configuration modal state (Language selection: 0 = En, 1 = Ru)
-	cfgLangIndex int
+	cfgSection   int // 0: Language, 1: Favourite Chats
+	cfgLangIndex int // 0: En, 1: Ru
+	cfgFavCursor int // selected index in favoriteChats list
+
+	// Favourite / pinned chats (persisted in data/favorite_chats.json)
+	favoriteChats   []storage.FavoriteChatRecord
+	favoriteChatIDs map[int64]bool
 }
 
 func (m *Model) T(key string, args ...any) string {
@@ -237,6 +243,13 @@ func (m *Model) T(key string, args ...any) string {
 func NewModel(cfg *config.AppConfig, aiEngine *ai.Engine, mtSvc *mtproto.Service, forceDemo bool) *Model {
 	chats := make([]storage.ChatInfo, len(storage.DemoChats))
 	copy(chats, storage.DemoChats)
+
+	favChats := storage.LoadFavoriteChats(cfg.DataDir)
+	favIDs := make(map[int64]bool, len(favChats))
+	for _, f := range favChats {
+		favIDs[f.ChatID] = true
+	}
+	chats = reorderChatsWithPinnedList(chats, favIDs, favChats)
 
 	var selChatID int64
 	var initLiveMsgs []storage.LiveMessage
@@ -303,7 +316,11 @@ func NewModel(cfg *config.AppConfig, aiEngine *ai.Engine, mtSvc *mtproto.Service
 		periodSpec:        cfg.DefaultPeriod,
 		runNotes:          cfg.DefaultNotes,
 		activeSkill:       cfg.DefaultSkill,
+		cfgSection:        0,
 		cfgLangIndex:      initLangIdx,
+		cfgFavCursor:      0,
+		favoriteChats:     favChats,
+		favoriteChatIDs:   favIDs,
 		jobDone:           1,
 		jobTotal:          1,
 		startTime:         time.Now(),
@@ -349,6 +366,152 @@ func (m *Model) activeChat() *storage.ChatInfo {
 		return &m.chats[0]
 	}
 	return nil
+}
+
+func reorderChatsWithPinnedList(chats []storage.ChatInfo, favIDs map[int64]bool, favList []storage.FavoriteChatRecord) []storage.ChatInfo {
+	if len(chats) == 0 || len(favIDs) == 0 {
+		return chats
+	}
+	byID := make(map[int64]storage.ChatInfo, len(chats))
+	for _, c := range chats {
+		byID[c.ChatID] = c
+	}
+	var pinned []storage.ChatInfo
+	seen := make(map[int64]bool, len(chats))
+	for _, fav := range favList {
+		if c, ok := byID[fav.ChatID]; ok {
+			pinned = append(pinned, c)
+			seen[fav.ChatID] = true
+		}
+	}
+	for _, c := range chats {
+		if favIDs[c.ChatID] && !seen[c.ChatID] {
+			pinned = append(pinned, c)
+			seen[c.ChatID] = true
+		}
+	}
+	var unpinned []storage.ChatInfo
+	for _, c := range chats {
+		if !seen[c.ChatID] {
+			unpinned = append(unpinned, c)
+		}
+	}
+	return append(pinned, unpinned...)
+}
+
+func (m *Model) isChatPinned(chatID int64) bool {
+	if m.favoriteChatIDs == nil {
+		return false
+	}
+	return m.favoriteChatIDs[chatID]
+}
+
+func (m *Model) reorderChatsWithPinned(chats []storage.ChatInfo) []storage.ChatInfo {
+	return reorderChatsWithPinnedList(chats, m.favoriteChatIDs, m.favoriteChats)
+}
+
+func (m *Model) togglePinChat(chatID int64) {
+	if chatID == 0 {
+		return
+	}
+	if m.favoriteChatIDs == nil {
+		m.favoriteChatIDs = make(map[int64]bool)
+	}
+
+	if m.favoriteChatIDs[chatID] {
+		// Unpin
+		delete(m.favoriteChatIDs, chatID)
+		var updated []storage.FavoriteChatRecord
+		var chatTitle string
+		for _, f := range m.favoriteChats {
+			if f.ChatID == chatID {
+				chatTitle = f.Title
+			} else {
+				updated = append(updated, f)
+			}
+		}
+		m.favoriteChats = updated
+		_ = storage.SaveFavoriteChats(m.cfg.DataDir, m.favoriteChats)
+		m.chats = m.reorderChatsWithPinned(m.chats)
+		for i, c := range m.chats {
+			if c.ChatID == chatID {
+				m.chatCursor = i
+				break
+			}
+		}
+		if chatTitle == "" {
+			chatTitle = fmt.Sprintf("ID %d", chatID)
+		}
+		m.statusText = fmt.Sprintf("Unpinned chat '%s'", chatTitle)
+		m.addTrace(fmt.Sprintf("Unpinned chat '%s' (id=%d)", chatTitle, chatID))
+	} else {
+		// Pin
+		var title string
+		var username string
+		var chatType string
+		for _, c := range m.chats {
+			if c.ChatID == chatID {
+				title = c.Title
+				username = c.Username
+				chatType = c.ChatType
+				break
+			}
+		}
+		if title == "" {
+			title = fmt.Sprintf("Chat %d", chatID)
+		}
+		rec := storage.FavoriteChatRecord{
+			ChatID:   chatID,
+			Title:    title,
+			Username: username,
+			ChatType: chatType,
+			PinnedAt: time.Now().Format("2006-01-02 15:04:05"),
+		}
+		m.favoriteChats = append(m.favoriteChats, rec)
+		m.favoriteChatIDs[chatID] = true
+		_ = storage.SaveFavoriteChats(m.cfg.DataDir, m.favoriteChats)
+		m.chats = m.reorderChatsWithPinned(m.chats)
+		for i, c := range m.chats {
+			if c.ChatID == chatID {
+				m.chatCursor = i
+				break
+			}
+		}
+		m.statusText = fmt.Sprintf("Pinned chat '%s' to top", title)
+		m.addTrace(fmt.Sprintf("Pinned chat '%s' (id=%d) to top", title, chatID))
+	}
+}
+
+func (m *Model) removeFavoriteChat(chatID int64) {
+	if chatID == 0 {
+		return
+	}
+	if m.favoriteChatIDs != nil {
+		delete(m.favoriteChatIDs, chatID)
+	}
+	var updated []storage.FavoriteChatRecord
+	var chatTitle string
+	for _, f := range m.favoriteChats {
+		if f.ChatID == chatID {
+			chatTitle = f.Title
+		} else {
+			updated = append(updated, f)
+		}
+	}
+	m.favoriteChats = updated
+	_ = storage.SaveFavoriteChats(m.cfg.DataDir, m.favoriteChats)
+	m.chats = m.reorderChatsWithPinned(m.chats)
+	if m.cfgFavCursor >= len(m.favoriteChats) {
+		m.cfgFavCursor = maxInt(0, len(m.favoriteChats)-1)
+	}
+	if len(m.favoriteChats) == 0 {
+		m.cfgSection = 0
+	}
+	if chatTitle == "" {
+		chatTitle = fmt.Sprintf("ID %d", chatID)
+	}
+	m.statusText = fmt.Sprintf("Removed '%s' from favourites", chatTitle)
+	m.addTrace(fmt.Sprintf("Removed chat '%s' (id=%d) from favourite chats list", chatTitle, chatID))
 }
 
 func (m *Model) isChatAIEnabled(chatID int64) bool {
@@ -929,7 +1092,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case dialogsLoadedMsg:
 		if msg.err == nil && len(msg.chats) > 0 {
-			m.chats = msg.chats
+			m.chats = m.reorderChatsWithPinned(msg.chats)
 			m.chatCursor = 0
 			m.selectedChatID = m.chats[0].ChatID
 			m.syncCurrentChatAISettings()
