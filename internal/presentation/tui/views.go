@@ -20,7 +20,7 @@ func (m *Model) View() string {
 	}
 
 	if m.activeModal != modalNone {
-		return m.renderModalOverlay()
+		return clampViewToTerminal(m.renderModalOverlay(), m.width, m.height)
 	}
 
 	topBar := m.renderTopBar()
@@ -29,8 +29,8 @@ func (m *Model) View() string {
 	topH := lipgloss.Height(topBar)
 	bottomH := lipgloss.Height(bottomBar)
 	bodyHeight := m.height - topH - bottomH
-	if bodyHeight < 10 {
-		bodyHeight = 10
+	if bodyHeight < 6 {
+		bodyHeight = 6
 	}
 
 	sidebarWidth := 38
@@ -39,16 +39,20 @@ func (m *Model) View() string {
 	} else if m.width < 100 {
 		sidebarWidth = 30
 	}
+	if sidebarWidth > m.width-20 {
+		sidebarWidth = maxInt(12, m.width-20)
+	}
 	mainWidth := m.width - sidebarWidth - 1
-	if mainWidth < 40 {
-		mainWidth = 40
+	if mainWidth < 10 {
+		mainWidth = 10
 	}
 
 	sidebar := m.renderSidebar(sidebarWidth, bodyHeight)
 	mainPane := m.renderMainPanel(mainWidth, bodyHeight)
 
 	body := lipgloss.JoinHorizontal(lipgloss.Top, sidebar, " ", mainPane)
-	return lipgloss.JoinVertical(lipgloss.Left, topBar, body, bottomBar)
+	rawView := lipgloss.JoinVertical(lipgloss.Left, topBar, body, bottomBar)
+	return clampViewToTerminal(rawView, m.width, m.height)
 }
 
 func (m *Model) renderTopBar() string {
@@ -300,17 +304,21 @@ func (m *Model) renderSidebar(width, totalHeight int) string {
 			} else {
 				switch {
 				case hasAI && isSelected:
-					formatted = lipgloss.NewStyle().Foreground(colPurple).Bold(true).Render(formatted)
+					formatted = lipgloss.NewStyle().Foreground(colPurple).Bold(true).Width(innerW).Render(formatted)
 				case hasAI:
-					formatted = lipgloss.NewStyle().Foreground(colPurple).Render(formatted)
+					formatted = lipgloss.NewStyle().Foreground(colPurple).Width(innerW).Render(formatted)
 				case isSelected:
-					formatted = lipgloss.NewStyle().Foreground(colGreen).Bold(true).Render(formatted)
+					formatted = lipgloss.NewStyle().Foreground(colGreen).Bold(true).Width(innerW).Render(formatted)
 				default:
-					formatted = lipgloss.NewStyle().Foreground(colMuted).Render(formatted)
+					formatted = lipgloss.NewStyle().Foreground(colMuted).Width(innerW).Render(formatted)
 				}
 			}
 			chatLines = append(chatLines, formatted)
 		}
+	}
+	chatLines = clampLinesToWidth(chatLines, innerW)
+	if len(chatLines) > chatsH-2 {
+		chatLines = chatLines[:chatsH-2]
 	}
 	for len(chatLines) < chatsH-2 {
 		chatLines = append(chatLines, strings.Repeat(" ", innerW))
@@ -395,6 +403,13 @@ func (m *Model) renderMainPanel(width, height int) string {
 		allLines := append([]string{}, headerLines...)
 		allLines = append(allLines, strings.Repeat(" ", innerW))
 		allLines = append(allLines, liveLines...)
+		allLines = clampLinesToWidth(allLines, innerW)
+		if len(allLines) > innerH {
+			allLines = allLines[:innerH]
+		}
+		for len(allLines) < innerH {
+			allLines = append(allLines, strings.Repeat(" ", innerW))
+		}
 		return lipgloss.NewStyle().
 			Border(lipgloss.NormalBorder()).
 			BorderForeground(borderCol).
@@ -445,6 +460,13 @@ func (m *Model) renderMainPanel(width, height int) string {
 	allLines := append([]string{}, headerLines...)
 	allLines = append(allLines, strings.Repeat(" ", innerW))
 	allLines = append(allLines, sliced...)
+	allLines = clampLinesToWidth(allLines, innerW)
+	if len(allLines) > innerH {
+		allLines = allLines[:innerH]
+	}
+	for len(allLines) < innerH {
+		allLines = append(allLines, strings.Repeat(" ", innerW))
+	}
 
 	return lipgloss.NewStyle().
 		Border(lipgloss.NormalBorder()).

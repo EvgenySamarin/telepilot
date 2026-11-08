@@ -223,7 +223,17 @@ func padRightVisual(s string, width int) string {
 func sanitizeTerminalText(s string) string {
 	var b strings.Builder
 	for _, r := range s {
+		if r == '\r' || r == '\x00' || r == '\x1b' {
+			continue
+		}
+		if r == '\t' {
+			b.WriteString("  ")
+			continue
+		}
 		if r == '\uFE0F' || r == '\uFE0E' || r == '\u200D' || (r >= 0x1F1E6 && r <= 0x1F1FF) {
+			continue
+		}
+		if r < 32 && r != '\n' {
 			continue
 		}
 		b.WriteRune(r)
@@ -271,18 +281,20 @@ func marqueeSingleLine(text string, width int, tick int) string {
 }
 
 func truncateSingleLine(text string, maxW int) string {
-	clean := strings.ReplaceAll(text, "\n", " ")
+	clean := strings.ReplaceAll(text, "\r", "")
+	clean = strings.ReplaceAll(clean, "\n", " ")
+	clean = strings.ReplaceAll(clean, "\t", " ")
+	if maxW <= 0 {
+		return ""
+	}
 	if lipgloss.Width(clean) <= maxW {
 		return clean
 	}
-	runes := []rune(clean)
+	tail := ".."
 	if maxW <= 2 {
-		return string(runes[:maxInt(0, maxW)])
+		tail = ""
 	}
-	for len(runes) > 0 && lipgloss.Width(string(runes))+2 > maxW {
-		runes = runes[:len(runes)-1]
-	}
-	return string(runes) + ".."
+	return ansi.Truncate(clean, maxW, tail)
 }
 
 func padOrTruncate(text string, width int) string {
@@ -341,20 +353,32 @@ func wrapTextBlock(text string, width int) []string {
 				cur += " " + w
 			} else {
 				for lipgloss.Width(cur) > width {
-					r := []rune(cur)
-					cut := minInt(len(r), width)
-					result = append(result, string(r[:cut]))
-					cur = contIndent + string(r[cut:])
+					cutLine := ansi.Truncate(cur, width, "")
+					if cutLine == "" || cutLine == cur {
+						r := []rune(cur)
+						if len(r) > 0 {
+							cutLine = string(r[:1])
+						}
+					}
+					result = append(result, cutLine)
+					rem := cur[len(cutLine):]
+					cur = contIndent + strings.TrimLeft(rem, " ")
 				}
 				result = append(result, cur)
 				cur = contIndent + w
 			}
 		}
 		for lipgloss.Width(cur) > width {
-			r := []rune(cur)
-			cut := minInt(len(r), width)
-			result = append(result, string(r[:cut]))
-			cur = contIndent + string(r[cut:])
+			cutLine := ansi.Truncate(cur, width, "")
+			if cutLine == "" || cutLine == cur {
+				r := []rune(cur)
+				if len(r) > 0 {
+					cutLine = string(r[:1])
+				}
+			}
+			result = append(result, cutLine)
+			rem := cur[len(cutLine):]
+			cur = contIndent + strings.TrimLeft(rem, " ")
 		}
 		result = append(result, cur)
 	}
@@ -362,6 +386,24 @@ func wrapTextBlock(text string, width int) []string {
 		return []string{""}
 	}
 	return result
+}
+
+// clampViewToTerminal strictly enforces terminal boundary limits on the final rendered string.
+// It ensures the output never has more than maxH lines, and no line exceeds maxW visual columns.
+// This prevents terminal scrollback overflow and ANSI cursor misalignment in alternate screen buffers.
+func clampViewToTerminal(view string, maxW, maxH int) string {
+	rawLines := strings.Split(view, "\n")
+	if maxH > 0 && len(rawLines) > maxH {
+		rawLines = rawLines[:maxH]
+	}
+	out := make([]string, 0, len(rawLines))
+	for _, l := range rawLines {
+		if maxW > 0 && lipgloss.Width(l) > maxW {
+			l = ansi.Truncate(l, maxW, "")
+		}
+		out = append(out, l)
+	}
+	return strings.Join(out, "\n")
 }
 
 func maxInt(a, b int) int {

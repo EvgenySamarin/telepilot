@@ -891,3 +891,167 @@ func TestRenderRunningLineReusableAndSkillLibraryMarquee(t *testing.T) {
 		t.Errorf("expected skillCursor to advance to 1, got %d", m.skillCursor)
 	}
 }
+
+func TestHelpModalDescriptionContinuationAlignment(t *testing.T) {
+	for _, lang := range []string{"en", "ru"} {
+		m := newTestModel(t, lang)
+		rendered := m.renderHelpModal()
+
+		lines := strings.Split(rendered, "\n")
+		var descCol = -1
+
+		for lineIdx, rawLine := range lines {
+			if !strings.HasPrefix(rawLine, "║") {
+				continue
+			}
+			line := strings.TrimPrefix(rawLine, "║")
+			line = strings.TrimSuffix(line, "║")
+			if strings.TrimSpace(line) == "" || strings.Contains(line, "─TelePilot") || strings.Contains(line, "─Горячие") {
+				continue
+			}
+			if strings.Contains(line, " : ") {
+				parts := strings.SplitN(line, " : ", 2)
+				col := lipgloss.Width(parts[0]) + 3 // 3 for " : "
+				if descCol == -1 {
+					descCol = col
+				} else if col != descCol {
+					t.Errorf("lang=%s line %d: expected ':' separator at col %d, got %d in line: %q", lang, lineIdx, descCol, col, line)
+				}
+			} else if descCol != -1 {
+				// Continuation line of multi-line description
+				trimmed := strings.TrimLeft(line, " ")
+				leadSpaces := lipgloss.Width(line) - lipgloss.Width(trimmed)
+				if leadSpaces != descCol {
+					t.Errorf("lang=%s line %d: continuation line indentation (%d visual width) does not match first line description col (%d visual width):\nline: %q\nfull modal:\n%s",
+						lang, lineIdx, leadSpaces, descCol, rawLine, rendered)
+				}
+			}
+		}
+
+		if descCol == -1 {
+			t.Fatalf("lang=%s: did not find any shortcut entries with ' : ' separator in modal:\n%s", lang, rendered)
+		}
+	}
+}
+
+func TestWrapTextBlockWidthInvariant(t *testing.T) {
+	texts := []string{
+		"Посмотрите пункт 5. Тут очень много живых историй именно с турцией, только чуток придется почитать потратить время 😊",
+		"Юлиана 💙 (@JulianaJul41)",
+		"https://t.me/takemyrabbits/352683\r\nВ смысле? Мы на сыром... Тоже читаю Белецкую..., по ее рекомендации рассчитала рацион",
+		"📎 [IMAGE] img_20261106_msg30155.jpg (72 KB) [Press 'v' to download & preview/play]",
+		"Line with tabs\tand\t\tmultiple\rreturns\r\nand special chars 🚀🔥🎉❤️",
+	}
+
+	for _, text := range texts {
+		for w := 8; w <= 160; w++ {
+			lines := wrapTextBlock(text, w)
+			for i, l := range lines {
+				lw := lipgloss.Width(l)
+				if lw > w {
+					t.Errorf("wrapTextBlock(text, %d) line %d width=%d > %d: %q", w, i, lw, w, l)
+				}
+			}
+		}
+	}
+}
+
+func TestDiagnoseUnreadChatRendering(t *testing.T) {
+	m := newTestModel(t, "ru")
+	m.chats = []storage.ChatInfo{
+		{
+			ChatID:      1001,
+			Title:       "Вежливые Пёсики",
+			ChatType:    "group",
+			UnreadCount: 3891,
+		},
+		{
+			ChatID:      1002,
+			Title:       "Ламповый чат. Собачники",
+			ChatType:    "group",
+			UnreadCount: 421,
+		},
+		{
+			ChatID:      1003,
+			Title:       "Пездуза",
+			ChatType:    "channel",
+			UnreadCount: 14,
+		},
+		{
+			ChatID:      1004,
+			Title:       "Мальта чат",
+			ChatType:    "group",
+			UnreadCount: 184,
+		},
+	}
+	m.chatCursor = 0
+	m.selectedChatID = 1001
+	m.activeTab = 1
+
+	// Add messages matching user's screenshot
+	m.liveMessages = []storage.LiveMessage{
+		{MessageID: 30154, Sender: "Anastasia (@m_mkot)", Text: "Возможно, тоже присоединимся", Timestamp: "2026-11-06 19:04"},
+		{MessageID: 30155, Sender: "Анастасия Сергеевна (@Miracle_Grass)", MediaType: "photo", MediaFileName: "img_20261106_msg30155.jpg", MediaSize: 72 * 1024, Timestamp: "2026-11-06 19:06"},
+		{MessageID: 30156, Sender: "Анастасия Сергеевна (@Miracle_Grass)", MediaType: "photo", MediaFileName: "img_20261106_msg30156.jpg", MediaSize: 72 * 1024, Timestamp: "2026-11-06 19:06"},
+		{MessageID: 30157, Sender: "Анастасия Сергеевна (@Miracle_Grass)", MediaType: "photo", MediaFileName: "img_20261106_msg30157.jpg", MediaSize: 72 * 1024, Timestamp: "2026-11-06 19:06"},
+		{MessageID: 30158, Sender: "Анастасия Сергеевна (@Miracle_Grass)", MediaType: "photo", MediaFileName: "img_20261106_msg30158.jpg", MediaSize: 65 * 1024, Timestamp: "2026-11-06 19:06"},
+		{MessageID: 30159, Sender: "Анастасия Сергеевна (@Miracle_Grass)", MediaType: "photo", MediaFileName: "img_20261106_msg30159.jpg", MediaSize: 68 * 1024, Timestamp: "2026-11-06 19:06"},
+		{MessageID: 30160, Sender: "Наталья Д", Text: "Мы уже больше года на натуралке! Анализы сдали - всё супер! Хоть вес нормальный набрала...", Timestamp: "2026-11-06 21:02"},
+		{MessageID: 30161, Sender: "Anton (@Pekur1)", Text: "Тут скорее мысль в том, что выбор питания это очень индивидуальная вещь и желательно при сопровождении специалиста.\nБез рекомендаций по умолчанию, что тот или иной способ является абсолютной пользой)", Timestamp: "2026-11-06 21:04"},
+		{MessageID: 30162, Sender: "Наталья Д", Text: "Полностью согласна!\nНам вот на пользу пошло!", Timestamp: "2026-11-06 21:05"},
+		{MessageID: 30163, Sender: "Юлиана 💙 (@JulianaJul41)", Text: "Натуралка, натуралке рознь)", Timestamp: "2026-11-06 21:07"},
+		{MessageID: 30164, Sender: "Наталья Д", Text: "В смысле? Мы на сыром... Тоже читаю Белецкую..., по ее рекомендации рассчитала рацион, его и придерживаюсь...", Timestamp: "2026-11-06 21:10"},
+		{MessageID: 30165, Sender: "Elizaveta (@vasuytaaa)", Text: "Доброго времени суток!\n\nhttps://t.me/takemyrabbits/352683\n\nПосмотрите пункт 5. Тут очень много живых историй именно с турцией, только чуток придется почитать потратить время 😊\n\nhttps://t.me/takemyrabbits_turkey\nИ вот основная группа. Тут ежедневно делятся своим опытом)", Timestamp: "2026-11-07 01:06"},
+		{MessageID: 30166, Sender: "Анатолий (@turbazik51)", Text: "Привет всем!", Timestamp: "2026-11-07 08:30"},
+	}
+	m.liveMsgCursor = len(m.liveMessages) - 1
+
+	for _, sz := range [][2]int{{174, 49}, {188, 49}, {101, 27}, {80, 24}} {
+		mUpdated, _ := m.Update(tea.WindowSizeMsg{Width: sz[0], Height: sz[1]})
+		m = mUpdated.(*Model)
+
+		for tab := 1; tab <= 4; tab++ {
+			m.activeTab = tab
+			for _, foc := range []focusArea{focusChats, focusMain} {
+				m.focus = foc
+				for cur := 0; cur < len(m.liveMessages); cur++ {
+					m.liveMsgCursor = cur
+					view := m.View()
+					lines := strings.Split(view, "\n")
+					if len(lines) != sz[1] {
+						t.Fatalf("size=%dx%d tab=%d foc=%v cur=%d: expected %d lines, got %d lines", sz[0], sz[1], tab, foc, cur, sz[1], len(lines))
+					}
+					for i, l := range lines {
+						w := lipgloss.Width(l)
+						if w > sz[0] {
+							t.Fatalf("size=%dx%d tab=%d foc=%v cur=%d line %d exceeds width %d (w=%d): %q", sz[0], sz[1], tab, foc, cur, i, sz[0], w, l)
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestClampViewToTerminal(t *testing.T) {
+	// Test height clamping
+	longView := strings.Repeat("line\n", 60)
+	clampedH := clampViewToTerminal(longView, 80, 24)
+	if lines := strings.Split(clampedH, "\n"); len(lines) != 24 {
+		t.Fatalf("expected 24 lines, got %d", len(lines))
+	}
+
+	// Test width clamping
+	wideLine := strings.Repeat("X", 200)
+	clampedW := clampViewToTerminal(wideLine, 80, 24)
+	if w := lipgloss.Width(clampedW); w > 80 {
+		t.Fatalf("expected visual width <= 80, got %d", w)
+	}
+
+	// Test ANSI escape sequence preservation during width clamp
+	styledWide := lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render(strings.Repeat("CyrillicПривет", 20))
+	clampedStyled := clampViewToTerminal(styledWide, 40, 24)
+	if w := lipgloss.Width(clampedStyled); w > 40 {
+		t.Fatalf("expected visual width <= 40, got %d", w)
+	}
+}
