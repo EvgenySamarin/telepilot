@@ -433,12 +433,123 @@ func (m *Model) handleModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case modalGlobalConfig:
+		// Level 2: Inside a box (cfgBoxEntered == true)
+		if m.cfgBoxEntered {
+			switch key {
+			case "esc":
+				// Exit back to box selection level (Level 1), exactly like Tab 2!
+				m.cfgBoxEntered = false
+				return m, nil
+
+			case "ctrl+s":
+				// Quick save & exit modal
+				m.cfgBoxEntered = false
+				m.activeModal = modalNone
+				return m, nil
+			}
+
+			if m.cfgBoxCursor == 0 {
+				// Inside Block 0: Interface Language
+				switch key {
+				case "up", "k", "down", "j", "left", "right", "h", "l", "f2", " ", "tab", "shift+tab":
+					m.cfgLangIndex = (m.cfgLangIndex + 1) % 2
+					newLang := "en"
+					if m.cfgLangIndex == 1 {
+						newLang = "ru"
+					}
+					m.cfg.SaveLanguage(newLang)
+					m.statusText = m.T("status_ready")
+					if newLang == "ru" {
+						m.addTrace("Язык интерфейса изменен на русский (ru). Настройки сохранены в .env.")
+					} else {
+						m.addTrace("Interface language switched to English (en). Settings saved to .env.")
+					}
+					return m, nil
+
+				case "1", "e", "E":
+					m.cfgLangIndex = 0
+					m.cfg.SaveLanguage("en")
+					m.statusText = m.T("status_ready")
+					m.addTrace("Interface language switched to English (en). Settings saved to .env.")
+					return m, nil
+
+				case "2", "r", "R":
+					m.cfgLangIndex = 1
+					m.cfg.SaveLanguage("ru")
+					m.statusText = m.T("status_ready")
+					m.addTrace("Язык интерфейса изменен на русский (ru). Настройки сохранены в .env.")
+					return m, nil
+
+				case "enter":
+					// Confirm selection and exit back to block selection level
+					m.cfgBoxEntered = false
+					return m, nil
+				}
+				return m, nil
+			}
+
+			if m.cfgBoxCursor == 1 {
+				// Inside Block 1: Favourite / Pinned Chats
+				switch key {
+				case "up", "k":
+					if m.cfgFavCursor > 0 {
+						m.cfgFavCursor--
+					}
+					return m, nil
+
+				case "down", "j":
+					if m.cfgFavCursor < len(m.favoriteChats)-1 {
+						m.cfgFavCursor++
+					}
+					return m, nil
+
+				case "d", "x", "delete", "backspace":
+					if m.cfgFavCursor >= 0 && m.cfgFavCursor < len(m.favoriteChats) {
+						target := m.favoriteChats[m.cfgFavCursor]
+						m.removeFavoriteChat(target.ChatID)
+					}
+					return m, nil
+
+				case "enter":
+					// Enter confirms and exits back to block selection level
+					m.cfgBoxEntered = false
+					return m, nil
+				}
+				return m, nil
+			}
+			return m, nil
+		}
+
+		// Level 1: Block selection (cfgBoxEntered == false)
 		switch key {
 		case "esc", "q":
+			// At block level, Esc/q closes the modal window
 			m.activeModal = modalNone
 			return m, nil
 
+		case "enter":
+			// Drill into the selected block
+			m.cfgBoxEntered = true
+			return m, nil
+
+		case "up", "k":
+			if m.cfgBoxCursor > 0 {
+				m.cfgBoxCursor--
+			}
+			return m, nil
+
+		case "down", "j":
+			if m.cfgBoxCursor < 1 {
+				m.cfgBoxCursor++
+			}
+			return m, nil
+
+		case "tab", "shift+tab":
+			m.cfgBoxCursor = (m.cfgBoxCursor + 1) % 2
+			return m, nil
+
 		case "1", "e", "E":
+			// Direct shortcut to switch language
 			m.cfgLangIndex = 0
 			m.cfg.SaveLanguage("en")
 			m.statusText = m.T("status_ready")
@@ -446,96 +557,33 @@ func (m *Model) handleModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "2", "r", "R":
+			// Direct shortcut to switch language
 			m.cfgLangIndex = 1
 			m.cfg.SaveLanguage("ru")
 			m.statusText = m.T("status_ready")
 			m.addTrace("Язык интерфейса изменен на русский (ru). Настройки сохранены в .env.")
 			return m, nil
 
-		case "tab", "shift+tab":
-			if len(m.favoriteChats) > 0 {
-				m.cfgSection = (m.cfgSection + 1) % 2
-			} else {
-				m.cfgSection = 0
-			}
-			return m, nil
-
-		case "enter", "ctrl+s":
-			newLang := "en"
-			if m.cfgLangIndex == 1 {
-				newLang = "ru"
-			}
-			m.cfg.SaveLanguage(newLang)
-			m.statusText = m.T("status_ready")
-			m.activeModal = modalNone
-			return m, nil
-		}
-
-		if m.cfgSection == 1 && len(m.favoriteChats) > 0 {
-			switch key {
-			case "up", "k":
-				if m.cfgFavCursor > 0 {
-					m.cfgFavCursor--
+		case " ":
+			// If on Language block, space can toggle
+			if m.cfgBoxCursor == 0 {
+				m.cfgLangIndex = (m.cfgLangIndex + 1) % 2
+				newLang := "en"
+				if m.cfgLangIndex == 1 {
+					newLang = "ru"
+				}
+				m.cfg.SaveLanguage(newLang)
+				m.statusText = m.T("status_ready")
+				if newLang == "ru" {
+					m.addTrace("Язык интерфейса изменен на русский (ru). Настройки сохранены в .env.")
 				} else {
-					m.cfgSection = 0
+					m.addTrace("Interface language switched to English (en). Settings saved to .env.")
 				}
-				return m, nil
-
-			case "down", "j":
-				if m.cfgFavCursor < len(m.favoriteChats)-1 {
-					m.cfgFavCursor++
-				}
-				return m, nil
-
-			case "d", "x", "delete", "backspace":
-				if m.cfgFavCursor >= 0 && m.cfgFavCursor < len(m.favoriteChats) {
-					target := m.favoriteChats[m.cfgFavCursor]
-					m.removeFavoriteChat(target.ChatID)
-				}
-				return m, nil
-			}
-			return m, nil
-		}
-
-		switch key {
-		case "f2", "h", "l", "left", "right", " ":
-			m.cfgLangIndex = (m.cfgLangIndex + 1) % 2
-			newLang := "en"
-			if m.cfgLangIndex == 1 {
-				newLang = "ru"
-			}
-			m.cfg.SaveLanguage(newLang)
-			m.statusText = m.T("status_ready")
-			if newLang == "ru" {
-				m.addTrace("Язык интерфейса изменен на русский (ru). Настройки сохранены в .env.")
-			} else {
-				m.addTrace("Interface language switched to English (en). Settings saved to .env.")
 			}
 			return m, nil
 
-		case "down", "j":
-			if len(m.favoriteChats) > 0 {
-				m.cfgSection = 1
-				m.cfgFavCursor = 0
-			} else {
-				m.cfgLangIndex = (m.cfgLangIndex + 1) % 2
-				newLang := "en"
-				if m.cfgLangIndex == 1 {
-					newLang = "ru"
-				}
-				m.cfg.SaveLanguage(newLang)
-			}
-			return m, nil
-
-		case "up", "k":
-			if len(m.favoriteChats) == 0 {
-				m.cfgLangIndex = (m.cfgLangIndex + 1) % 2
-				newLang := "en"
-				if m.cfgLangIndex == 1 {
-					newLang = "ru"
-				}
-				m.cfg.SaveLanguage(newLang)
-			}
+		case "ctrl+s":
+			m.activeModal = modalNone
 			return m, nil
 		}
 		return m, nil
@@ -621,7 +669,8 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.activeModal = modalAIConfig
 
 	case "C":
-		m.cfgSection = 0
+		m.cfgBoxCursor = 0
+		m.cfgBoxEntered = false
 		m.cfgLangIndex = 0
 		if m.cfg.IsRussian() {
 			m.cfgLangIndex = 1

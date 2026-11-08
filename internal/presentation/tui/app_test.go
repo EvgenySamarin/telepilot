@@ -73,17 +73,26 @@ func TestGlobalConfigHotkeyAndLanguageSwitch(t *testing.T) {
 		t.Errorf("esc should close modal, got %v", m.activeModal)
 	}
 
-	// 3. Press capital 'C' -> should open Global Config window
+	// 3. Press capital 'C' -> should open Global Config window at block-level navigation
 	mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'C'}})
 	m = mUpdated.(*Model)
 	if m.activeModal != modalGlobalConfig {
 		t.Fatalf("capital 'C' must open modalGlobalConfig, got %v", m.activeModal)
 	}
-	if m.cfgLangIndex != 0 {
-		t.Errorf("expected cfgLangIndex to be 0 for 'en', got %d", m.cfgLangIndex)
+	if m.cfgBoxCursor != 0 {
+		t.Errorf("expected cfgBoxCursor to be 0 for Language block, got %d", m.cfgBoxCursor)
+	}
+	if m.cfgBoxEntered {
+		t.Errorf("expected cfgBoxEntered to start false at block level")
 	}
 
-	// 4. Toggle language with Space
+	// 4. Press Enter to enter Block 0 (Language), then toggle language with Space
+	mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = mUpdated.(*Model)
+	if !m.cfgBoxEntered {
+		t.Fatalf("expected Enter to drill into Block 0 (cfgBoxEntered=true)")
+	}
+
 	mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})
 	m = mUpdated.(*Model)
 	if m.cfgLangIndex != 1 {
@@ -96,17 +105,27 @@ func TestGlobalConfigHotkeyAndLanguageSwitch(t *testing.T) {
 		t.Errorf("m.cfg.IsRussian() should be true")
 	}
 
-	// 5. Press Enter to confirm and close modal
-	mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	// 5. Press Esc to exit Block 0 back to block-level selection (modal remains open)
+	mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	m = mUpdated.(*Model)
-	if m.activeModal != modalNone {
-		t.Errorf("Enter should close modalGlobalConfig, got %v", m.activeModal)
+	if m.cfgBoxEntered {
+		t.Errorf("expected Esc to exit block (cfgBoxEntered=false)")
+	}
+	if m.activeModal != modalGlobalConfig {
+		t.Errorf("expected modal to remain open at block level after Esc from inside a box, got %v", m.activeModal)
 	}
 	if m.cfg.Language != "ru" {
-		t.Errorf("m.cfg.Language should remain 'ru' after closing, got %q", m.cfg.Language)
+		t.Errorf("m.cfg.Language should remain 'ru', got %q", m.cfg.Language)
 	}
 
-	// 6. Re-open with capital 'C' and switch back using key '1'
+	// 6. Press Esc at block level to close the modal
+	mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = mUpdated.(*Model)
+	if m.activeModal != modalNone {
+		t.Errorf("expected second Esc at block level to close modal, got %v", m.activeModal)
+	}
+
+	// 7. Re-open with capital 'C' and switch back using quick key '1'
 	mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'C'}})
 	m = mUpdated.(*Model)
 	if m.activeModal != modalGlobalConfig {
@@ -1274,8 +1293,11 @@ func TestFavoriteChatsConfigWindowManagementAndDeletedCornerCases(t *testing.T) 
 	if m.activeModal != modalGlobalConfig {
 		t.Fatalf("expected modalGlobalConfig, got %v", m.activeModal)
 	}
-	if m.cfgSection != 0 {
-		t.Errorf("expected initial cfgSection to be 0 (Language), got %d", m.cfgSection)
+	if m.cfgBoxCursor != 0 {
+		t.Errorf("expected initial cfgBoxCursor to be 0 (Language block), got %d", m.cfgBoxCursor)
+	}
+	if m.cfgBoxEntered {
+		t.Errorf("expected cfgBoxEntered to be false initially")
 	}
 
 	// 2. Render modal: must display deleted corner-case chat and [Deleted / Remote] indicator
@@ -1287,11 +1309,21 @@ func TestFavoriteChatsConfigWindowManagementAndDeletedCornerCases(t *testing.T) 
 		t.Errorf("expected modal to show [Deleted / Remote] badge for missing chat, got:\n%s", modalView)
 	}
 
-	// 3. Switch to Favourite Chats section using Tab
-	mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	// 3. Move selection to Block 1 (Favourite Chats) with 'j' / Down
+	mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
 	m = mUpdated.(*Model)
-	if m.cfgSection != 1 {
-		t.Errorf("expected Tab to switch cfgSection to 1, got %d", m.cfgSection)
+	if m.cfgBoxCursor != 1 {
+		t.Errorf("expected 'j' to switch cfgBoxCursor to 1, got %d", m.cfgBoxCursor)
+	}
+	if m.cfgBoxEntered {
+		t.Errorf("expected still at block level before pressing Enter")
+	}
+
+	// Press Enter to drill into Block 1 (Favourite Chats)
+	mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = mUpdated.(*Model)
+	if !m.cfgBoxEntered {
+		t.Fatalf("expected Enter on Block 1 to drill in (cfgBoxEntered=true)")
 	}
 	if m.cfgFavCursor != 0 {
 		t.Errorf("expected cfgFavCursor to be 0, got %d", m.cfgFavCursor)
@@ -1331,14 +1363,21 @@ func TestFavoriteChatsConfigWindowManagementAndDeletedCornerCases(t *testing.T) 
 	if len(m.favoriteChats) != 0 {
 		t.Errorf("expected 0 favorite chats after deleting all, got %d", len(m.favoriteChats))
 	}
-	if m.cfgSection != 0 {
-		t.Errorf("expected cfgSection to reset to 0 when favorite list becomes empty, got %d", m.cfgSection)
+
+	// 6. Press Esc to exit Block 1 back to block level (modal remains open)
+	mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = mUpdated.(*Model)
+	if m.cfgBoxEntered {
+		t.Errorf("expected Esc to exit block (cfgBoxEntered=false)")
+	}
+	if m.activeModal != modalGlobalConfig {
+		t.Errorf("expected modal to remain open after exiting block with Esc, got %v", m.activeModal)
 	}
 
-	// 6. Close modal with Enter
-	mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	// 7. Press Esc at block level to close the modal
+	mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	m = mUpdated.(*Model)
 	if m.activeModal != modalNone {
-		t.Errorf("expected modal to close with Enter, got %v", m.activeModal)
+		t.Errorf("expected Esc at block level to close modal, got %v", m.activeModal)
 	}
 }

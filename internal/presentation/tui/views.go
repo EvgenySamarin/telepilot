@@ -830,10 +830,7 @@ func (m *Model) scrollTab2ToSkill() {
 	}
 }
 
-func (m *Model) renderTab2Box(boxIdx int, title string, body string, cardW int, defaultTitleCol lipgloss.Color) []string {
-	isSelectedBox := m.focus == focusMain && m.activeTab == 2 && m.tab2BoxCursor == boxIdx
-	isEnteredBox := isSelectedBox && m.tab2BoxEntered
-
+func renderNavBox(isSelectedBox, isEnteredBox bool, title string, body string, cardW int, defaultTitleCol lipgloss.Color, isRussian bool, indentLeading bool) []string {
 	borderCol := colBorder
 	titleCol := defaultTitleCol
 	prefix := "  "
@@ -843,7 +840,7 @@ func (m *Model) renderTab2Box(boxIdx int, title string, body string, cardW int, 
 		borderCol = colGreen
 		titleCol = colGreen
 		prefix = "▼ "
-		if m.cfg.IsRussian() {
+		if isRussian {
 			badge = "[АКТИВНО — j/k:Выбор, Enter:Применить, Esc:Назад]"
 		} else {
 			badge = "[ACTIVE — j/k:Select, Enter:Apply, Esc:Back]"
@@ -852,7 +849,7 @@ func (m *Model) renderTab2Box(boxIdx int, title string, body string, cardW int, 
 		borderCol = colBorderFoc
 		titleCol = colCyan
 		prefix = "▸ "
-		if m.cfg.IsRussian() {
+		if isRussian {
 			badge = "[Enter: Открыть]"
 		} else {
 			badge = "[Enter: Open]"
@@ -878,7 +875,52 @@ func (m *Model) renderTab2Box(boxIdx int, title string, body string, cardW int, 
 		}
 	}
 
-	return renderInteriorCardWithBorder(displayTitle, body, cardW, titleCol, borderCol)
+	innerTextW := cardW - 4
+	if innerTextW < 10 {
+		innerTextW = 10
+	}
+
+	wrappedLines := wrapTextBlock(body, innerTextW)
+	var paddedLines []string
+	for _, l := range wrappedLines {
+		padded := padOrTruncate(l, innerTextW)
+		paddedLines = append(paddedLines, renderColorizedCardLine(padded))
+	}
+
+	box := lipgloss.NewStyle().
+		Border(lipgloss.NormalBorder()).
+		BorderForeground(borderCol).
+		Padding(0, 1).
+		Width(innerTextW).
+		Render(strings.Join(paddedLines, "\n"))
+
+	var out []string
+	leadSpace := ""
+	if indentLeading {
+		leadSpace = " "
+	}
+	if strings.TrimSpace(displayTitle) != "" {
+		for _, tl := range wrapTextBlock(displayTitle, cardW) {
+			tLine := leadSpace + lipgloss.NewStyle().Foreground(titleCol).Bold(true).Render(padOrTruncate(tl, cardW))
+			out = append(out, tLine)
+		}
+	}
+	for _, bl := range strings.Split(box, "\n") {
+		out = append(out, leadSpace+bl)
+	}
+	return out
+}
+
+func (m *Model) renderTab2Box(boxIdx int, title string, body string, cardW int, defaultTitleCol lipgloss.Color) []string {
+	isSelectedBox := m.focus == focusMain && m.activeTab == 2 && m.tab2BoxCursor == boxIdx
+	isEnteredBox := isSelectedBox && m.tab2BoxEntered
+	return renderNavBox(isSelectedBox, isEnteredBox, title, body, cardW, defaultTitleCol, m.cfg.IsRussian(), true)
+}
+
+func (m *Model) renderConfigBox(boxIdx int, title string, body string, cardW int, defaultTitleCol lipgloss.Color) []string {
+	isSelectedBox := m.cfgBoxCursor == boxIdx
+	isEnteredBox := isSelectedBox && m.cfgBoxEntered
+	return renderNavBox(isSelectedBox, isEnteredBox, title, body, cardW, defaultTitleCol, m.cfg.IsRussian(), false)
 }
 
 // renderRePromptTab renders Tab 2: Per-Chat AI Configuration & Skills Library with 2-level box navigation.

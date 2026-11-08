@@ -555,11 +555,15 @@ func (m *Model) renderAIConfigModal() string {
 }
 
 func (m *Model) renderGlobalConfigModal() string {
-	modalW := 88
-	if m.width-6 < modalW {
-		modalW = m.width - 6
+	modalW := 90
+	if m.width-4 < modalW {
+		modalW = m.width - 4
 	}
-	innerW := modalW - 4
+	if modalW < 60 {
+		modalW = 60
+	}
+	innerW := modalW - 6
+	cardW := innerW
 
 	var rows []string
 	rows = append(rows, lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render(m.T("cfg_modal_title")))
@@ -569,49 +573,50 @@ func (m *Model) renderGlobalConfigModal() string {
 	rows = append(rows, lipgloss.NewStyle().Foreground(colYellow).Bold(true).Render(truncateSingleLine(banner, innerW)))
 	rows = append(rows, "")
 
-	// Section 1: Language
-	langHdrFg := colBlue
-	if m.cfgSection == 0 {
-		langHdrFg = colCyan
-	}
-	langLabel := lipgloss.NewStyle().Foreground(langHdrFg).Bold(true).Render(m.T("cfg_modal_lang"))
-	rows = append(rows, langLabel)
+	// -------------------------------------------------------------
+	// Block 0: Interface Language
+	// -------------------------------------------------------------
+	enPrefix := "  ( ) "
+	ruPrefix := "  ( ) "
+	isEnteredLang := m.cfgBoxCursor == 0 && m.cfgBoxEntered
 
-	optW := innerW - 4
-	if optW < 30 {
-		optW = 30
-	}
-
-	enPrefix := "  "
-	ruPrefix := "  "
-	enStyle := lipgloss.NewStyle().Width(optW).Padding(0, 1)
-	ruStyle := lipgloss.NewStyle().Width(optW).Padding(0, 1)
-
+	var btnEn, btnRu string
 	if m.cfgLangIndex == 0 {
-		enPrefix = "▸ "
-		enStyle = enStyle.Background(colHighlight).Foreground(colGreen).Bold(true)
-		ruStyle = ruStyle.Background(colPanelBg).Foreground(colMuted)
+		if isEnteredLang {
+			enPrefix = "▸ (●) "
+			btnEn = lipgloss.NewStyle().Foreground(colGreen).Bold(true).Render(enPrefix + "[1] En — English (Default)")
+			ruPrefix = "  ( ) "
+			btnRu = lipgloss.NewStyle().Foreground(colMuted).Render(ruPrefix + "[2] Ru — Русский (Russian)")
+		} else {
+			enPrefix = "  (●) "
+			btnEn = lipgloss.NewStyle().Foreground(colGreen).Bold(true).Render(enPrefix + "[1] En — English (Default)")
+			ruPrefix = "  ( ) "
+			btnRu = lipgloss.NewStyle().Foreground(colMuted).Render(ruPrefix + "[2] Ru — Русский (Russian)")
+		}
 	} else {
-		ruPrefix = "▸ "
-		enStyle = enStyle.Background(colPanelBg).Foreground(colMuted)
-		ruStyle = ruStyle.Background(colHighlight).Foreground(colGreen).Bold(true)
+		if isEnteredLang {
+			enPrefix = "  ( ) "
+			btnEn = lipgloss.NewStyle().Foreground(colMuted).Render(enPrefix + "[1] En — English (Default)")
+			ruPrefix = "▸ (●) "
+			btnRu = lipgloss.NewStyle().Foreground(colGreen).Bold(true).Render(ruPrefix + "[2] Ru — Русский (Russian)")
+		} else {
+			enPrefix = "  ( ) "
+			btnEn = lipgloss.NewStyle().Foreground(colMuted).Render(enPrefix + "[1] En — English (Default)")
+			ruPrefix = "  (●) "
+			btnRu = lipgloss.NewStyle().Foreground(colGreen).Bold(true).Render(ruPrefix + "[2] Ru — Русский (Russian)")
+		}
 	}
 
-	btnEn := enStyle.Render(enPrefix + "[1] En — English (Default)")
-	btnRu := ruStyle.Render(ruPrefix + "[2] Ru — Русский (Russian)")
-	rows = append(rows, btnEn, btnRu, "")
+	langBody := btnEn + "\n" + btnRu
+	rows = append(rows, m.renderConfigBox(0, m.T("cfg_modal_lang"), langBody, cardW, colCyan)...)
+	rows = append(rows, "")
 
-	// Section 2: Favourite / Pinned Chats
-	favHdrFg := colBlue
-	if m.cfgSection == 1 {
-		favHdrFg = colCyan
-	}
-	favHdr := lipgloss.NewStyle().Foreground(favHdrFg).Bold(true).Render(m.T("cfg_modal_favs_title", len(m.favoriteChats)))
-	rows = append(rows, favHdr)
-
+	// -------------------------------------------------------------
+	// Block 1: Favourite / Pinned Chats
+	// -------------------------------------------------------------
+	var favBody string
 	if len(m.favoriteChats) == 0 {
-		emptyRow := lipgloss.NewStyle().Foreground(colMuted).Italic(true).Render(m.T("cfg_modal_favs_empty"))
-		rows = append(rows, emptyRow, "")
+		favBody = lipgloss.NewStyle().Foreground(colMuted).Italic(true).Render(m.T("cfg_modal_favs_empty"))
 	} else {
 		chatExists := make(map[int64]bool, len(m.chats))
 		for _, c := range m.chats {
@@ -626,9 +631,10 @@ func (m *Model) renderGlobalConfigModal() string {
 		endFav := minInt(len(m.favoriteChats), startFav+maxVisibleFavs)
 
 		var favRows []string
+		isEnteredFavs := m.cfgBoxCursor == 1 && m.cfgBoxEntered
 		for i := startFav; i < endFav; i++ {
 			fav := m.favoriteChats[i]
-			isCursor := m.cfgSection == 1 && i == m.cfgFavCursor
+			isCursor := isEnteredFavs && i == m.cfgFavCursor
 			prefix := "  "
 			if isCursor {
 				prefix = "▸ "
@@ -647,22 +653,31 @@ func (m *Model) renderGlobalConfigModal() string {
 
 			titleClean := sanitizeTerminalText(fav.Title)
 			rawItem := fmt.Sprintf("%s📌 %s (ID: %d)%s%s", prefix, titleClean, fav.ChatID, statusStr, actionHint)
+			innerTextW := cardW - 4
+			if lipgloss.Width(rawItem) > innerTextW {
+				overflow := lipgloss.Width(rawItem) - innerTextW
+				titleRunes := []rune(titleClean)
+				if len(titleRunes) > overflow+2 {
+					titleClean = string(titleRunes[:len(titleRunes)-overflow-2]) + ".."
+				}
+				rawItem = fmt.Sprintf("%s📌 %s (ID: %d)%s%s", prefix, titleClean, fav.ChatID, statusStr, actionHint)
+			}
 
-			itemStyle := lipgloss.NewStyle().Width(optW).Padding(0, 1)
+			var renderedItem string
 			if isCursor {
 				if !exists {
-					itemStyle = itemStyle.Background(colHighlight).Foreground(colRed).Bold(true)
+					renderedItem = lipgloss.NewStyle().Foreground(colRed).Bold(true).Render(rawItem)
 				} else {
-					itemStyle = itemStyle.Background(colHighlight).Foreground(colCyan).Bold(true)
+					renderedItem = lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render(rawItem)
 				}
 			} else {
 				if !exists {
-					itemStyle = itemStyle.Background(colPanelBg).Foreground(colRed)
+					renderedItem = lipgloss.NewStyle().Foreground(colRed).Render(rawItem)
 				} else {
-					itemStyle = itemStyle.Background(colPanelBg).Foreground(colText)
+					renderedItem = lipgloss.NewStyle().Foreground(colText).Render(rawItem)
 				}
 			}
-			favRows = append(favRows, itemStyle.Render(padOrTruncate(rawItem, optW)))
+			favRows = append(favRows, renderedItem)
 		}
 		if len(m.favoriteChats) > maxVisibleFavs {
 			scrollInfo := lipgloss.NewStyle().Foreground(colMuted).Render(
@@ -670,9 +685,15 @@ func (m *Model) renderGlobalConfigModal() string {
 			)
 			favRows = append(favRows, scrollInfo)
 		}
-		rows = append(rows, strings.Join(favRows, "\n"), "")
+		favBody = strings.Join(favRows, "\n")
 	}
 
+	rows = append(rows, m.renderConfigBox(1, m.T("cfg_modal_favs_title", len(m.favoriteChats)), favBody, cardW, colPurple)...)
+	rows = append(rows, "")
+
+	// -------------------------------------------------------------
+	// System Information & Storage Paths Box
+	// -------------------------------------------------------------
 	infoLines := []string{
 		m.T("cfg_modal_info_model", m.cfg.ActiveModelLabel()),
 		m.T("cfg_modal_info_skill", m.activeSkill),
@@ -688,26 +709,35 @@ func (m *Model) renderGlobalConfigModal() string {
 		Border(lipgloss.NormalBorder()).
 		BorderForeground(colBorder).
 		Padding(0, 1).
-		Width(innerW - 2).
+		Width(innerW - 4).
 		Render(strings.Join(wrappedInfo, "\n"))
 
 	rows = append(rows, infoBox, "")
 
-	btnW := (innerW - 5) / 2
-	if btnW < 24 {
-		btnW = 24
+	// -------------------------------------------------------------
+	// Buttons & Navigation Hint
+	// -------------------------------------------------------------
+	btnW := (innerW - 4) / 2
+	if btnW < 22 {
+		btnW = 22
 	}
-	btnToggle := lipgloss.NewStyle().Background(colBlue).Foreground(colBg).Bold(true).Width(btnW).Align(lipgloss.Center).Render(m.T("cfg_modal_btn_toggle"))
+	btnEnter := lipgloss.NewStyle().Background(colBlue).Foreground(colBg).Bold(true).Width(btnW).Align(lipgloss.Center).Render(m.T("cfg_modal_btn_enter"))
 	btnSave := lipgloss.NewStyle().Background(colGreen).Foreground(colBg).Bold(true).Width(btnW).Align(lipgloss.Center).Render(m.T("cfg_modal_btn_save"))
 	btnEsc := lipgloss.NewStyle().Background(colBorder).Foreground(colText).Width(btnW).Align(lipgloss.Center).Render(m.T("cfg_modal_btn_cancel"))
 
-	btnRow1 := lipgloss.JoinHorizontal(lipgloss.Center, btnToggle, "   ", btnSave)
+	btnRow1 := lipgloss.JoinHorizontal(lipgloss.Center, btnEnter, "  ", btnSave)
 	btnRow2 := lipgloss.JoinHorizontal(lipgloss.Center, btnEsc)
 	rows = append(rows, btnRow1, "", btnRow2, "")
 
-	hintText := m.T("cfg_modal_hint")
-	if m.cfgSection == 1 {
-		hintText = m.T("cfg_modal_favs_hint")
+	var hintText string
+	if m.cfgBoxEntered {
+		if m.cfgBoxCursor == 0 {
+			hintText = m.T("cfg_modal_entered_lang_hint")
+		} else {
+			hintText = m.T("cfg_modal_entered_favs_hint")
+		}
+	} else {
+		hintText = m.T("cfg_modal_block_nav_hint")
 	}
 	hint := lipgloss.NewStyle().Foreground(colMuted).Align(lipgloss.Center).Width(innerW).Render(hintText)
 	rows = append(rows, hint)

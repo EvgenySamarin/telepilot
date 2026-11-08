@@ -226,10 +226,11 @@ type Model struct {
 	lastVisibleRows   int       // most recent main panel viewport height
 	resizePending     bool      // true right after WindowSizeMsg to realign scroll offsets
 
-	// Global Configuration modal state (Language selection: 0 = En, 1 = Ru)
-	cfgSection   int // 0: Language, 1: Favourite Chats
-	cfgLangIndex int // 0: En, 1: Ru
-	cfgFavCursor int // selected index in favoriteChats list
+	// Global Configuration modal state with 2-level box navigation (matching Tab 2 pattern)
+	cfgBoxCursor  int  // 0: Language, 1: Favourite Chats
+	cfgBoxEntered bool // true when user pressed Enter to drill into a box
+	cfgLangIndex  int  // 0: En, 1: Ru
+	cfgFavCursor  int  // selected index in favoriteChats list
 
 	// Favourite / pinned chats (persisted in data/favorite_chats.json)
 	favoriteChats   []storage.FavoriteChatRecord
@@ -316,7 +317,8 @@ func NewModel(cfg *config.AppConfig, aiEngine *ai.Engine, mtSvc *mtproto.Service
 		periodSpec:        cfg.DefaultPeriod,
 		runNotes:          cfg.DefaultNotes,
 		activeSkill:       cfg.DefaultSkill,
-		cfgSection:        0,
+		cfgBoxCursor:      0,
+		cfgBoxEntered:     false,
 		cfgLangIndex:      initLangIdx,
 		cfgFavCursor:      0,
 		favoriteChats:     favChats,
@@ -505,7 +507,7 @@ func (m *Model) removeFavoriteChat(chatID int64) {
 		m.cfgFavCursor = maxInt(0, len(m.favoriteChats)-1)
 	}
 	if len(m.favoriteChats) == 0 {
-		m.cfgSection = 0
+		m.cfgFavCursor = 0
 	}
 	if chatTitle == "" {
 		chatTitle = fmt.Sprintf("ID %d", chatID)
