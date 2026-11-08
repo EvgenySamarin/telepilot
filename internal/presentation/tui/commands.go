@@ -13,6 +13,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"telepilot/internal/domain/ai"
 	"telepilot/internal/domain/config"
 	"telepilot/internal/domain/skills"
 	"telepilot/internal/domain/storage"
@@ -583,6 +584,15 @@ func (m *Model) runSingleShotInstructionCmd(instruction string, appendMode bool)
 					return
 				default:
 				}
+				cleanText, directive, found := ai.ExtractScheduleDirective(act.Text, time.Now())
+				if found && directive != nil {
+					m.uiEventCh <- scheduleDirectiveFoundMsg{
+						chatID:    target.ChatID,
+						chatTitle: target.Title,
+						directive: *directive,
+					}
+					act.Text = cleanText
+				}
 				m.uiEventCh <- parseLogMsg(fmt.Sprintf("AI Single-Shot [%d/%d]: sending message...", idx+1, len(actions)))
 				sendCtx, sendCancel := context.WithTimeout(runCtx, 15*time.Second)
 				sent, sendErr := m.mtproto.SendMessage(sendCtx, target, act.Text)
@@ -602,6 +612,51 @@ func (m *Model) runSingleShotInstructionCmd(instruction string, appendMode bool)
 
 	return nil
 }
+
+func (m *Model) executeScheduledTaskCmd(task storage.ScheduledTask) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+		defer cancel()
+
+		chatTarget := storage.ChatInfo{
+			ChatID: task.ChatID,
+			Title:  task.ChatTitle,
+		}
+
+		var recent []storage.LiveMessage
+		if m.mtproto != nil {
+			msgs, _ := m.mtproto.FetchRecentMessages(ctx, chatTarget, 10)
+			recent = msgs
+		}
+
+		text, err := m.ai.GenerateScheduledTaskMessage(ctx, task.ChatTitle, recent, task.TaskPrompt)
+		if err != nil || strings.TrimSpace(text) == "" {
+			text = task.TaskPrompt
+		}
+
+		var sent storage.LiveMessage
+		var sendErr error
+		if m.mtproto != nil {
+			sent, sendErr = m.mtproto.SendMessage(ctx, chatTarget, text)
+		} else {
+			sent = storage.LiveMessage{
+				MessageID:  int(time.Now().Unix()),
+				Sender:     "You",
+				Timestamp:  time.Now().Format("15:04"),
+				Text:       text,
+				IsOutgoing: true,
+			}
+		}
+
+		return scheduledTaskExecutedMsg{
+			task:    task,
+			sentMsg: sent,
+			text:    text,
+			err:     sendErr,
+		}
+	}
+}
+
 
 // runChatAICmd executes the active AI skill on the currently selected chat and displays its output in Tab 3.
 func (m *Model) runChatAICmd() tea.Cmd {

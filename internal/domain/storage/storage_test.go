@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestFavoriteChatsStorage(t *testing.T) {
@@ -95,6 +96,71 @@ func TestHiddenChatsStorage(t *testing.T) {
 		t.Fatalf("failed to save empty list: %v", err)
 	}
 	loadedEmpty := LoadHiddenChats(tempDir)
+	if len(loadedEmpty) != 0 {
+		t.Errorf("expected 0 records after saving empty list, got %d", len(loadedEmpty))
+	}
+}
+
+func TestScheduledTasksStorage(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "sched_tasks_test_*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// 1. Loading from empty dir returns empty slice
+	tasks := LoadScheduledTasks(tempDir)
+	if len(tasks) != 0 {
+		t.Errorf("expected 0 scheduled tasks initially, got %d", len(tasks))
+	}
+
+	// 2. Save records
+	now := time.Now().Truncate(time.Second)
+	records := []ScheduledTask{
+		{
+			ID:          "task_1",
+			ChatID:      3001,
+			ChatTitle:   "Work Chat",
+			TaskPrompt:  "Check deployment status",
+			DueAt:       now.Add(30 * time.Minute),
+			IntervalStr: "none",
+			CreatedAt:   now,
+		},
+		{
+			ID:          "task_2",
+			ChatID:      3002,
+			ChatTitle:   "Health Chat",
+			TaskPrompt:  "Drink water",
+			DueAt:       now.Add(2 * time.Hour),
+			IntervalStr: "2h",
+			CreatedAt:   now,
+		},
+	}
+	if err := SaveScheduledTasks(tempDir, records); err != nil {
+		t.Fatalf("failed to save scheduled tasks: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(tempDir, "scheduled_tasks.json")); err != nil {
+		t.Errorf("scheduled_tasks.json file not created: %v", err)
+	}
+
+	// 3. Load back
+	loaded := LoadScheduledTasks(tempDir)
+	if len(loaded) != 2 {
+		t.Fatalf("expected 2 loaded scheduled tasks, got %d", len(loaded))
+	}
+	if loaded[0].ID != "task_1" || loaded[0].ChatID != 3001 || loaded[0].TaskPrompt != "Check deployment status" {
+		t.Errorf("unexpected task 0: %+v", loaded[0])
+	}
+	if loaded[1].ID != "task_2" || loaded[1].IntervalStr != "2h" {
+		t.Errorf("unexpected task 1: %+v", loaded[1])
+	}
+
+	// 4. Save empty list
+	if err := SaveScheduledTasks(tempDir, []ScheduledTask{}); err != nil {
+		t.Fatalf("failed to save empty list: %v", err)
+	}
+	loadedEmpty := LoadScheduledTasks(tempDir)
 	if len(loadedEmpty) != 0 {
 		t.Errorf("expected 0 records after saving empty list, got %d", len(loadedEmpty))
 	}

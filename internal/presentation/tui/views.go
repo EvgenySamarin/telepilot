@@ -69,6 +69,15 @@ func (m *Model) renderTopBar() string {
 		if cfg, ok := m.activeChatAIConfig(); ok {
 			aiBadge = " " + lipgloss.NewStyle().Foreground(colPurple).Bold(true).Render("[AI:"+cfg.Skill+"]")
 		}
+		var activeSchedCount int
+		for _, t := range m.scheduledTasks {
+			if t.ChatID == ch.ChatID {
+				activeSchedCount++
+			}
+		}
+		if activeSchedCount > 0 {
+			aiBadge += " " + lipgloss.NewStyle().Foreground(colYellow).Bold(true).Render(fmt.Sprintf("[⏰%d]", activeSchedCount))
+		}
 	}
 
 	left := fmt.Sprintf(" %s │ %s%s",
@@ -77,8 +86,13 @@ func (m *Model) renderTopBar() string {
 		aiBadge,
 	)
 
+	schedIndicator := ""
+	if count := len(m.scheduledTasks); count > 0 {
+		schedIndicator = lipgloss.NewStyle().Foreground(colYellow).Bold(true).Render(fmt.Sprintf("⏰%d ", count))
+	}
 	elapsedSec := int(time.Since(m.startTime).Seconds())
-	right := fmt.Sprintf("%s   %ds ",
+	right := fmt.Sprintf("%s%s   %ds ",
+		schedIndicator,
 		lipgloss.NewStyle().Foreground(colPurple).Render(m.cfg.ActiveModelLabel()),
 		elapsedSec,
 	)
@@ -1046,6 +1060,27 @@ func (m *Model) renderRePromptTab(rec *storage.SkillOutputRecord, innerW int) []
 		chatAICol = colYellow
 		chatAIBody = m.T("skills_chat_disabled", config.DefaultSkillName)
 	}
+	var chatSchedCount int
+	var nextSchedStr string
+	now := time.Now()
+	for _, t := range m.scheduledTasks {
+		if t.ChatID == m.selectedChatID {
+			chatSchedCount++
+			if nextSchedStr == "" {
+				rem := t.DueAt.Sub(now)
+				if rem < 0 {
+					rem = 0
+				}
+				nextSchedStr = formatDurationShort(rem) + " (" + truncateSingleLine(t.TaskPrompt, 18) + ")"
+			}
+		}
+	}
+	schedLine := m.T("skills_sched_none")
+	if chatSchedCount > 0 {
+		schedLine = m.T("skills_sched_active", chatSchedCount, nextSchedStr)
+	}
+	chatAIBody += "\n" + schedLine
+
 	if m.tab2BoxEntered && m.tab2BoxCursor == 1 {
 		chatAIBody = highlightBox1EnteredOption(chatAIBody, m.tab2ChatOptCursor)
 	}
@@ -1177,3 +1212,19 @@ func (m *Model) renderTraceTab(innerW int) []string {
 	}
 	return out
 }
+
+func formatDurationShort(d time.Duration) string {
+	if d < time.Minute {
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	}
+	if d < time.Hour {
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	}
+	hours := int(d.Hours())
+	mins := int(d.Minutes()) % 60
+	if mins > 0 {
+		return fmt.Sprintf("%dh%dm", hours, mins)
+	}
+	return fmt.Sprintf("%dh", hours)
+}
+

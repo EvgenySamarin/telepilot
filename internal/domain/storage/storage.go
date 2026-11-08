@@ -23,6 +23,37 @@ func HiddenChatsFilePath(dataDir string) string {
 	return filepath.Join(dataDir, "hidden_chats.json")
 }
 
+func ScheduledTasksFilePath(dataDir string) string {
+	return filepath.Join(dataDir, "scheduled_tasks.json")
+}
+
+func LoadScheduledTasks(dataDir string) []ScheduledTask {
+	path := ScheduledTasksFilePath(dataDir)
+	data, err := os.ReadFile(path)
+	if err != nil || len(data) == 0 {
+		return nil
+	}
+	var list []ScheduledTask
+	if err := json.Unmarshal(data, &list); err == nil {
+		return list
+	}
+	return nil
+}
+
+func SaveScheduledTasks(dataDir string, tasks []ScheduledTask) error {
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		return err
+	}
+	if tasks == nil {
+		tasks = []ScheduledTask{}
+	}
+	bytes, err := json.MarshalIndent(tasks, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(ScheduledTasksFilePath(dataDir), bytes, 0o644)
+}
+
 func LoadFavoriteChats(dataDir string) []FavoriteChatRecord {
 	path := FavoriteChatsFilePath(dataDir)
 	data, err := os.ReadFile(path)

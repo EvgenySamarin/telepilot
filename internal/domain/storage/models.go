@@ -1,5 +1,7 @@
 package storage
 
+import "time"
+
 type ChatInfo struct {
 	ChatID      int64  `json:"chat_id"`
 	AccessHash  int64  `json:"access_hash"`
@@ -25,6 +27,17 @@ type HiddenChatRecord struct {
 	Username string `json:"username,omitempty"`
 	ChatType string `json:"chat_type,omitempty"`
 	HiddenAt string `json:"hidden_at,omitempty"`
+}
+
+// ScheduledTask represents a delayed or repeating AI task scheduled for a Telegram chat.
+type ScheduledTask struct {
+	ID          string    `json:"id"`
+	ChatID      int64     `json:"chat_id"`
+	ChatTitle   string    `json:"chat_title"`
+	TaskPrompt  string    `json:"task_prompt"`
+	DueAt       time.Time `json:"due_at"`
+	IntervalStr string    `json:"interval,omitempty"` // e.g. "30m", "2h", "24h", "daily"
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 type MediaItemRecord struct {

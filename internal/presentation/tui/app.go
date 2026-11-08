@@ -135,6 +135,19 @@ type parseDoneMsg struct {
 	err    error
 }
 
+type scheduleDirectiveFoundMsg struct {
+	chatID    int64
+	chatTitle string
+	directive ai.ScheduleDirective
+}
+
+type scheduledTaskExecutedMsg struct {
+	task    storage.ScheduledTask
+	sentMsg storage.LiveMessage
+	text    string
+	err     error
+}
+
 type Model struct {
 	cfg     *config.AppConfig
 	ai      *ai.Engine
@@ -172,6 +185,9 @@ type Model struct {
 
 	// Tab 3: Per-chat AI skill execution outputs (persisted in data/chat_skill_outputs.json)
 	skillOutputs map[int64]storage.SkillOutputRecord
+
+	// Background scheduled AI tasks (persisted in data/scheduled_tasks.json)
+	scheduledTasks []storage.ScheduledTask
 
 	mainScroll int
 
@@ -283,6 +299,7 @@ func NewModel(cfg *config.AppConfig, aiEngine *ai.Engine, mtSvc *mtproto.Service
 
 	chatAICfgs := storage.LoadChatAIConfigs(cfg.DataDir)
 	skillOutputs := storage.LoadChatSkillOutputs(cfg.DataDir)
+	schedTasks := storage.LoadScheduledTasks(cfg.DataDir)
 	if forceDemo && len(skillOutputs) == 0 {
 		for _, c := range chats {
 			skillOutputs[c.ChatID] = storage.DemoSkillOutput(c, cfg.Language)
@@ -335,6 +352,7 @@ func NewModel(cfg *config.AppConfig, aiEngine *ai.Engine, mtSvc *mtproto.Service
 		liveMsgCursor:     maxInt(0, len(initLiveMsgs)-1),
 		lastLiveSync:      time.Now(),
 		skillOutputs:      skillOutputs,
+		scheduledTasks:    schedTasks,
 		statusText:        i18n.T(cfg.Language, "status_ready"),
 		periodSpec:        cfg.DefaultPeriod,
 		runNotes:          cfg.DefaultNotes,
@@ -1009,6 +1027,44 @@ func (m *Model) addTrace(msg string) {
 	}
 }
 
+func (m *Model) checkScheduledTasksCmd() []tea.Cmd {
+	if len(m.scheduledTasks) == 0 {
+		return nil
+	}
+	now := time.Now()
+	var due []storage.ScheduledTask
+	var remaining []storage.ScheduledTask
+	for _, t := range m.scheduledTasks {
+		if !t.DueAt.After(now) {
+			due = append(due, t)
+		} else {
+			remaining = append(remaining, t)
+		}
+	}
+	if len(due) == 0 {
+		return nil
+	}
+
+	var cmds []tea.Cmd
+	for _, task := range due {
+		// If repeating task, reschedule for the next future interval
+		if task.IntervalStr != "" && task.IntervalStr != "none" {
+			if dur, err := ai.ParseScheduleDuration(task.IntervalStr); err == nil && dur > 0 {
+				nextDue := task.DueAt.Add(dur)
+				for !nextDue.After(now) {
+					nextDue = nextDue.Add(dur)
+				}
+				task.DueAt = nextDue
+				remaining = append(remaining, task)
+			}
+		}
+		cmds = append(cmds, m.executeScheduledTaskCmd(task))
+	}
+	m.scheduledTasks = remaining
+	_ = storage.SaveScheduledTasks(m.cfg.DataDir, m.scheduledTasks)
+	return cmds
+}
+
 func (m *Model) Init() tea.Cmd {
 	return tea.Batch(
 		tickCmd(),
@@ -1032,7 +1088,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.marqueeTick%9 == 0 {
 			m.syncSkillsFromDisk()
 		}
-		return m, tickCmd()
+		var cmds []tea.Cmd
+		cmds = append(cmds, tickCmd())
+		if schedCmds := m.checkScheduledTasksCmd(); len(schedCmds) > 0 {
+			cmds = append(cmds, schedCmds...)
+		}
+		return m, tea.Batch(cmds...)
 
 	case liveSyncTickMsg:
 		var cmds []tea.Cmd
@@ -1131,6 +1192,28 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.statusText = m.T("status_ready")
 			return m, nil
 		}
+
+		cleanReply, directive, found := ai.ExtractScheduleDirective(reply, time.Now())
+		if found && directive != nil {
+			task := storage.ScheduledTask{
+				ID:          fmt.Sprintf("task_%d", time.Now().UnixNano()),
+				ChatID:      msg.chat.ChatID,
+				ChatTitle:   msg.chat.Title,
+				TaskPrompt:  directive.TaskPrompt,
+				DueAt:       directive.DueAt,
+				IntervalStr: directive.RepeatStr,
+				CreatedAt:   time.Now(),
+			}
+			m.scheduledTasks = append(m.scheduledTasks, task)
+			_ = storage.SaveScheduledTasks(m.cfg.DataDir, m.scheduledTasks)
+			logTime := directive.InStr
+			if directive.AtStr != "" {
+				logTime = "@" + directive.AtStr
+			}
+			m.addTrace(fmt.Sprintf("⏰ Task scheduled for '%s' (%s): %s", msg.chat.Title, logTime, directive.TaskPrompt))
+		}
+		reply = cleanReply
+
 		if msg.sendMode == "auto_send" {
 			m.addTrace(fmt.Sprintf("AI Auto-Send reply to '%s': %s", msg.chat.Title, truncateSingleLine(reply, 60)))
 			return m, m.sendLiveMessageCmd(msg.chat, reply)
@@ -1142,6 +1225,38 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.chatComposing = true
 		m.statusText = m.T("status_ready")
 		m.addTrace(fmt.Sprintf("AI drafted reply for '%s' into compose box (press Enter to send).", msg.chat.Title))
+		return m, nil
+
+	case scheduleDirectiveFoundMsg:
+		task := storage.ScheduledTask{
+			ID:          fmt.Sprintf("task_%d", time.Now().UnixNano()),
+			ChatID:      msg.chatID,
+			ChatTitle:   msg.chatTitle,
+			TaskPrompt:  msg.directive.TaskPrompt,
+			DueAt:       msg.directive.DueAt,
+			IntervalStr: msg.directive.RepeatStr,
+			CreatedAt:   time.Now(),
+		}
+		m.scheduledTasks = append(m.scheduledTasks, task)
+		_ = storage.SaveScheduledTasks(m.cfg.DataDir, m.scheduledTasks)
+		logTime := msg.directive.InStr
+		if msg.directive.AtStr != "" {
+			logTime = "@" + msg.directive.AtStr
+		}
+		m.addTrace(fmt.Sprintf("⏰ Task scheduled for '%s' (%s): %s", msg.chatTitle, logTime, msg.directive.TaskPrompt))
+		return m, nil
+
+	case scheduledTaskExecutedMsg:
+		if msg.err != nil {
+			m.addTrace(fmt.Sprintf("⏰ Scheduled task failed for '%s': %v", msg.task.ChatTitle, msg.err))
+		} else {
+			m.addTrace(fmt.Sprintf("⏰ Executed scheduled task for '%s': %s", msg.task.ChatTitle, truncateSingleLine(msg.text, 60)))
+			if msg.task.ChatID == m.selectedChatID {
+				m.liveMessages = append(m.liveMessages, msg.sentMsg)
+				m.liveMsgCursor = len(m.liveMessages) - 1
+				m.lastLiveSync = time.Now()
+			}
+		}
 		return m, nil
 
 	case liveMessageSentMsg:

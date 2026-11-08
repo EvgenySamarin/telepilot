@@ -120,6 +120,8 @@ var messages = map[string]map[string]string{
 		"skills_period_notes":   "Single-Shot:\n    %s",
 		"skills_output_none":    "Output Status:\n    [OFF] No AI skill output generated for this chat yet (press 'r' to run skill)\nSingle-Shot:\n    %s",
 		"skills_notes_none":     "[OFF] (none)",
+		"skills_sched_active":   "Scheduled Tasks:\n    [ACTIVE] %d task(s) (Next in %s)",
+		"skills_sched_none":     "Scheduled Tasks:\n    [OFF] (none)",
 
 		// Tab 4 Trace
 		"trace_hdr": " ▸ Real-Time Execution & MTProto Diagnostic Trace",
@@ -268,6 +270,8 @@ var messages = map[string]map[string]string{
 		"skills_period_notes":   "Разовая команда:\n    %s",
 		"skills_output_none":    "Статус результата:\n    [ВЫКЛ] Для этого чата еще нет результата ИИ-навыка (нажмите 'r' для запуска)\nРазовая команда:\n    %s",
 		"skills_notes_none":     "[ВЫКЛ] (нет)",
+		"skills_sched_active":   "Фоновые задачи:\n    [АКТИВНО] %d задач (Следующая через %s)",
+		"skills_sched_none":     "Фоновые задачи:\n    [ВЫКЛ] (нет)",
 
 		// Tab 4 Trace
 		"trace_hdr": " ▸ Трассировка выполнения и диагностики MTProto в реальном времени",

@@ -1645,3 +1645,127 @@ func TestConfigModalResetDefaultSkills(t *testing.T) {
 		t.Errorf("expected statusText to mention restored, got %q", m.statusText)
 	}
 }
+
+func TestScheduledTasksLifecycle(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "sched_tui_test_*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	cfg := &config.AppConfig{
+		ProjectRoot: tmpDir,
+		DataDir:     tmpDir,
+		Language:    "en",
+	}
+	m := NewModel(cfg, nil, nil, true)
+
+	if len(m.chats) == 0 {
+		t.Fatalf("expected demo chats loaded")
+	}
+	testChat := m.chats[0]
+
+	// 1. Send an AI reply containing a one-shot <schedule> tag
+	rawReply := "Sure, I'll remind you in 30 minutes!\n\n<schedule in=\"30m\" repeat=\"none\">Check oven status</schedule>"
+	mUpdated, _ := m.Update(aiChatReplyGeneratedMsg{
+		chat:     testChat,
+		reply:    rawReply,
+		sendMode: "draft",
+	})
+	m = mUpdated.(*Model)
+
+	// Cleaned text in draft compose box must NOT have <schedule> tag
+	if strings.Contains(m.chatInputBuffer, "<schedule") {
+		t.Errorf("expected chatInputBuffer to be cleaned, got: %q", m.chatInputBuffer)
+	}
+	if !strings.Contains(m.chatInputBuffer, "Sure, I'll remind you in 30 minutes!") {
+		t.Errorf("expected original confirmation preserved in chatInputBuffer, got: %q", m.chatInputBuffer)
+	}
+
+	// Task must be recorded in m.scheduledTasks
+	if len(m.scheduledTasks) != 1 {
+		t.Fatalf("expected 1 scheduled task, got %d", len(m.scheduledTasks))
+	}
+	task := m.scheduledTasks[0]
+	if task.ChatID != testChat.ChatID || task.TaskPrompt != "Check oven status" {
+		t.Errorf("unexpected scheduled task properties: %+v", task)
+	}
+	if task.DueAt.Before(time.Now().Add(25 * time.Minute)) {
+		t.Errorf("expected DueAt ~30m in future, got %v", task.DueAt)
+	}
+
+	// Header indicator must reflect active scheduled tasks
+	renderedHeader := m.renderTopBar()
+	if !strings.Contains(renderedHeader, "⏰1") {
+		t.Errorf("expected top bar to show '⏰1' indicator, got: %s", renderedHeader)
+	}
+
+	// 2. Tick when task is not due: task stays in list
+	cmds := m.checkScheduledTasksCmd()
+	if len(cmds) != 0 {
+		t.Errorf("expected 0 commands when task not due, got %d", len(cmds))
+	}
+	if len(m.scheduledTasks) != 1 {
+		t.Errorf("expected task to remain pending, got %d", len(m.scheduledTasks))
+	}
+
+	// 3. Fast-forward DueAt into the past to simulate time elapsed
+	m.scheduledTasks[0].DueAt = time.Now().Add(-10 * time.Second)
+	cmds = m.checkScheduledTasksCmd()
+	if len(cmds) != 1 {
+		t.Fatalf("expected 1 execution command when task is due, got %d", len(cmds))
+	}
+	// One-shot task should be removed from pending list
+	if len(m.scheduledTasks) != 0 {
+		t.Errorf("expected one-shot task to be removed after triggering, got %d", len(m.scheduledTasks))
+	}
+
+	// 4. Test Repeating Task Rescheduling
+	repeatTask := storage.ScheduledTask{
+		ID:          "task_repeat_test",
+		ChatID:      testChat.ChatID,
+		ChatTitle:   testChat.Title,
+		TaskPrompt:  "Drink a glass of water",
+		DueAt:       time.Now().Add(-5 * time.Second), // already due
+		IntervalStr: "1h",
+		CreatedAt:   time.Now().Add(-1 * time.Hour),
+	}
+	m.scheduledTasks = append(m.scheduledTasks, repeatTask)
+	cmds = m.checkScheduledTasksCmd()
+	if len(cmds) != 1 {
+		t.Fatalf("expected 1 command for due repeat task, got %d", len(cmds))
+	}
+	// Repeat task should have been rescheduled to future
+	if len(m.scheduledTasks) != 1 {
+		t.Fatalf("expected repeat task to be retained in pending list, got %d", len(m.scheduledTasks))
+	}
+	if !m.scheduledTasks[0].DueAt.After(time.Now()) {
+		t.Errorf("expected repeat task DueAt to be updated into future, got %v", m.scheduledTasks[0].DueAt)
+	}
+
+	// 5. Test scheduledTaskExecutedMsg handling
+	m.selectedChatID = testChat.ChatID
+	beforeMsgCount := len(m.liveMessages)
+	sentMsg := storage.LiveMessage{
+		MessageID:  99991,
+		Sender:     "You",
+		Timestamp:  "12:30",
+		Text:       "Reminder: Check oven status",
+		IsOutgoing: true,
+	}
+	mUpdated, _ = m.Update(scheduledTaskExecutedMsg{
+		task:    task,
+		sentMsg: sentMsg,
+		text:    sentMsg.Text,
+		err:     nil,
+	})
+	m = mUpdated.(*Model)
+
+	if len(m.liveMessages) != beforeMsgCount+1 {
+		t.Errorf("expected liveMessages count to increase by 1, got %d", len(m.liveMessages))
+	}
+	lastMsg := m.liveMessages[len(m.liveMessages)-1]
+	if lastMsg.MessageID != 99991 || lastMsg.Text != "Reminder: Check oven status" {
+		t.Errorf("unexpected last message appended: %+v", lastMsg)
+	}
+}

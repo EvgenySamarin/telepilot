@@ -47,6 +47,7 @@ Configure AI behavior independently for each Telegram conversation:
 - **Autonomous Auto-Reply**: Automatically generate AI responses to incoming messages in chosen chats.
 - **Flexible Send Modes**: Choose between drafting messages into the compose box for manual review or sending immediately.
 - **Single-Shot Instructions**: Provide ad-hoc, temporary tasks for a chat without changing permanent settings.
+- **Background Task Scheduler**: Natural-language reminders and recurring tasks (e.g. "remind me in 30 minutes" or "repeat daily") are automatically parsed and executed by the internal background ticker without requiring rigid command syntax.
 - **Modular Skills Library**: Run, author, preview, or import Markdown skills (`SKILL.md`) with automatic hot-reloading. Default skills are seeded on initial launch and preserve user deletions.
 
 <p align="center">
@@ -108,6 +109,7 @@ data/
 ├── chat_skill_outputs.json  # Cached AI skill outputs & execution metadata per chat
 ├── favorite_chats.json      # Persisted favourite / pinned chats list
 ├── hidden_chats.json        # Persisted hidden chats list
+├── scheduled_tasks.json     # Background AI scheduled reminders & recurring tasks
 └── outputs/                 # Exported Markdown output files (<chat_slug>_output.md) for QuickLook & Finder
 
 .agents/skills/              # Modular AI skills (SKILL.md) loaded dynamically with live reload
