@@ -18,6 +18,15 @@ type FavoriteChatRecord struct {
 	PinnedAt string `json:"pinned_at,omitempty"`
 }
 
+// HiddenChatRecord represents a user-hidden chat excluded from the chat list.
+type HiddenChatRecord struct {
+	ChatID   int64  `json:"chat_id"`
+	Title    string `json:"title"`
+	Username string `json:"username,omitempty"`
+	ChatType string `json:"chat_type,omitempty"`
+	HiddenAt string `json:"hidden_at,omitempty"`
+}
+
 type MediaItemRecord struct {
 	MessageID     int    `json:"message_id"`
 	MediaType     string `json:"media_type"` // "voice" | "image" | "document"

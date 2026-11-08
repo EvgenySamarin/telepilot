@@ -130,6 +130,7 @@ func (m *Model) renderBottomBar() string {
 			keys = append(keys,
 				keyPair{"Enter/Space", m.T("key_select_chat")},
 				keyPair{"p/f", m.T("key_pin_chat")},
+				keyPair{"H", m.T("key_hide_chat")},
 			)
 		}
 		switch m.activeTab {
@@ -233,10 +234,14 @@ func (m *Model) renderSidebar(width, totalHeight int) string {
 	matches := m.filteredChatIndices()
 	cursorPos := m.filteredChatCursorPos(matches)
 	showSearchBar := m.chatSearching || m.chatSearchQuery != ""
+	hasHidden := len(m.hiddenChats) > 0
 
 	maxChatRows := chatsH - 3
 	if showSearchBar {
 		maxChatRows = chatsH - 4
+	}
+	if hasHidden {
+		maxChatRows--
 	}
 	if maxChatRows < 1 {
 		maxChatRows = 1
@@ -272,11 +277,16 @@ func (m *Model) renderSidebar(width, totalHeight int) string {
 		chatLines = append(chatLines, searchLine)
 	}
 
+	maxChatLines := chatsH - 2
+	if hasHidden {
+		maxChatLines--
+	}
+
 	if len(matches) == 0 {
 		emptyRow := lipgloss.NewStyle().Foreground(colMuted).Render(padOrTruncate(m.T("sidebar_search_no_match"), innerW))
 		chatLines = append(chatLines, emptyRow)
 	} else {
-		for pos := m.chatScrollOffset; pos < len(matches) && len(chatLines) < chatsH-2; pos++ {
+		for pos := m.chatScrollOffset; pos < len(matches) && len(chatLines) < maxChatLines; pos++ {
 			chatIdx := matches[pos]
 			c := m.chats[chatIdx]
 			isSelected := c.ChatID == m.selectedChatID
@@ -325,6 +335,19 @@ func (m *Model) renderSidebar(width, totalHeight int) string {
 			chatLines = append(chatLines, formatted)
 		}
 	}
+
+	if hasHidden {
+		for len(chatLines) < chatsH-3 {
+			chatLines = append(chatLines, strings.Repeat(" ", innerW))
+		}
+		noticeStr := m.T("sidebar_hidden_notice", len(m.hiddenChats))
+		noticeLine := lipgloss.NewStyle().
+			Foreground(colYellow).
+			Width(innerW).
+			Render(padOrTruncate(noticeStr, innerW))
+		chatLines = append(chatLines, noticeLine)
+	}
+
 	chatLines = clampLinesToWidth(chatLines, innerW)
 	if len(chatLines) > chatsH-2 {
 		chatLines = chatLines[:chatsH-2]

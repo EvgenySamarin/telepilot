@@ -227,14 +227,22 @@ type Model struct {
 	resizePending     bool      // true right after WindowSizeMsg to realign scroll offsets
 
 	// Global Configuration modal state with 2-level box navigation (matching Tab 2 pattern)
-	cfgBoxCursor  int  // 0: Language, 1: Favourite Chats
-	cfgBoxEntered bool // true when user pressed Enter to drill into a box
-	cfgLangIndex  int  // 0: En, 1: Ru
-	cfgFavCursor  int  // selected index in favoriteChats list
+	cfgBoxCursor    int  // 0: Language, 1: Favourite Chats, 2: Hidden Chats
+	cfgBoxEntered   bool // true when user pressed Enter to drill into a box
+	cfgLangIndex    int  // 0: En, 1: Ru
+	cfgFavCursor    int  // selected index in favoriteChats list
+	cfgHiddenCursor int  // selected index in hiddenChats list
+
+	// Raw chats loaded from Telegram/Demo before filtering
+	rawChats []storage.ChatInfo
 
 	// Favourite / pinned chats (persisted in data/favorite_chats.json)
 	favoriteChats   []storage.FavoriteChatRecord
 	favoriteChatIDs map[int64]bool
+
+	// Hidden chats (persisted in data/hidden_chats.json)
+	hiddenChats   []storage.HiddenChatRecord
+	hiddenChatIDs map[int64]bool
 }
 
 func (m *Model) T(key string, args ...any) string {
@@ -242,15 +250,28 @@ func (m *Model) T(key string, args ...any) string {
 }
 
 func NewModel(cfg *config.AppConfig, aiEngine *ai.Engine, mtSvc *mtproto.Service, forceDemo bool) *Model {
-	chats := make([]storage.ChatInfo, len(storage.DemoChats))
-	copy(chats, storage.DemoChats)
+	rawChats := make([]storage.ChatInfo, len(storage.DemoChats))
+	copy(rawChats, storage.DemoChats)
 
 	favChats := storage.LoadFavoriteChats(cfg.DataDir)
 	favIDs := make(map[int64]bool, len(favChats))
 	for _, f := range favChats {
 		favIDs[f.ChatID] = true
 	}
-	chats = reorderChatsWithPinnedList(chats, favIDs, favChats)
+
+	hiddenChats := storage.LoadHiddenChats(cfg.DataDir)
+	hiddenIDs := make(map[int64]bool, len(hiddenChats))
+	for _, h := range hiddenChats {
+		hiddenIDs[h.ChatID] = true
+	}
+
+	var visibleChats []storage.ChatInfo
+	for _, c := range rawChats {
+		if !hiddenIDs[c.ChatID] {
+			visibleChats = append(visibleChats, c)
+		}
+	}
+	chats := reorderChatsWithPinnedList(visibleChats, favIDs, favChats)
 
 	var selChatID int64
 	var initLiveMsgs []storage.LiveMessage
@@ -323,6 +344,10 @@ func NewModel(cfg *config.AppConfig, aiEngine *ai.Engine, mtSvc *mtproto.Service
 		cfgFavCursor:      0,
 		favoriteChats:     favChats,
 		favoriteChatIDs:   favIDs,
+		rawChats:          rawChats,
+		hiddenChats:       hiddenChats,
+		hiddenChatIDs:     hiddenIDs,
+		cfgHiddenCursor:   0,
 		jobDone:           1,
 		jobTotal:          1,
 		startTime:         time.Now(),
@@ -514,6 +539,135 @@ func (m *Model) removeFavoriteChat(chatID int64) {
 	}
 	m.statusText = fmt.Sprintf("Removed '%s' from favourites", chatTitle)
 	m.addTrace(fmt.Sprintf("Removed chat '%s' (id=%d) from favourite chats list", chatTitle, chatID))
+}
+
+func (m *Model) isChatHidden(chatID int64) bool {
+	if m.hiddenChatIDs == nil {
+		return false
+	}
+	return m.hiddenChatIDs[chatID]
+}
+
+func (m *Model) refreshVisibleChats() {
+	var visible []storage.ChatInfo
+	for _, c := range m.rawChats {
+		if !m.isChatHidden(c.ChatID) {
+			visible = append(visible, c)
+		}
+	}
+	m.chats = m.reorderChatsWithPinned(visible)
+	if m.chatCursor >= len(m.chats) {
+		m.chatCursor = maxInt(0, len(m.chats)-1)
+	}
+	if len(m.chats) > 0 {
+		found := false
+		for _, c := range m.chats {
+			if c.ChatID == m.selectedChatID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			m.selectedChatID = m.chats[m.chatCursor].ChatID
+			m.syncCurrentChatAISettings()
+		}
+	} else {
+		m.selectedChatID = 0
+	}
+}
+
+func (m *Model) hideChat(chatID int64) {
+	if chatID == 0 {
+		return
+	}
+	if m.isChatPinned(chatID) {
+		m.removeFavoriteChat(chatID)
+	}
+
+	if m.hiddenChatIDs == nil {
+		m.hiddenChatIDs = make(map[int64]bool)
+	}
+	m.hiddenChatIDs[chatID] = true
+
+	var title, username, chatType string
+	for _, c := range m.rawChats {
+		if c.ChatID == chatID {
+			title = c.Title
+			username = c.Username
+			chatType = c.ChatType
+			break
+		}
+	}
+	if title == "" {
+		for _, c := range m.chats {
+			if c.ChatID == chatID {
+				title = c.Title
+				username = c.Username
+				chatType = c.ChatType
+				break
+			}
+		}
+	}
+	if title == "" {
+		title = fmt.Sprintf("Chat %d", chatID)
+	}
+
+	exists := false
+	for _, h := range m.hiddenChats {
+		if h.ChatID == chatID {
+			exists = true
+			break
+		}
+	}
+	if !exists {
+		rec := storage.HiddenChatRecord{
+			ChatID:   chatID,
+			Title:    title,
+			Username: username,
+			ChatType: chatType,
+			HiddenAt: time.Now().Format("2006-01-02 15:04:05"),
+		}
+		m.hiddenChats = append(m.hiddenChats, rec)
+	}
+
+	_ = storage.SaveHiddenChats(m.cfg.DataDir, m.hiddenChats)
+	m.refreshVisibleChats()
+	m.statusText = fmt.Sprintf("Chat '%s' hidden", title)
+	m.addTrace(fmt.Sprintf("Hidden chat '%s' (id=%d)", title, chatID))
+}
+
+func (m *Model) unhideChat(chatID int64) {
+	if chatID == 0 {
+		return
+	}
+	if m.hiddenChatIDs != nil {
+		delete(m.hiddenChatIDs, chatID)
+	}
+	var updated []storage.HiddenChatRecord
+	var chatTitle string
+	for _, h := range m.hiddenChats {
+		if h.ChatID == chatID {
+			chatTitle = h.Title
+		} else {
+			updated = append(updated, h)
+		}
+	}
+	m.hiddenChats = updated
+	_ = storage.SaveHiddenChats(m.cfg.DataDir, m.hiddenChats)
+
+	if m.cfgHiddenCursor >= len(m.hiddenChats) {
+		m.cfgHiddenCursor = maxInt(0, len(m.hiddenChats)-1)
+	}
+	if len(m.hiddenChats) == 0 {
+		m.cfgHiddenCursor = 0
+	}
+
+	m.refreshVisibleChats()
+	if chatTitle == "" {
+		chatTitle = fmt.Sprintf("ID %d", chatID)
+	}
+	m.statusText = fmt.Sprintf("Restored chat '%s'", chatTitle)
+	m.addTrace(fmt.Sprintf("Restored hidden chat '%s' (id=%d)", chatTitle, chatID))
 }
 
 func (m *Model) isChatAIEnabled(chatID int64) bool {
@@ -1094,13 +1248,21 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case dialogsLoadedMsg:
 		if msg.err == nil && len(msg.chats) > 0 {
-			m.chats = m.reorderChatsWithPinned(msg.chats)
+			m.rawChats = make([]storage.ChatInfo, len(msg.chats))
+			copy(m.rawChats, msg.chats)
+			m.refreshVisibleChats()
+			if len(m.chats) > 0 {
+				m.chatCursor = 0
+				m.selectedChatID = m.chats[0].ChatID
+				m.syncCurrentChatAISettings()
+				m.statusText = "Live MTProto"
+				m.addTrace(fmt.Sprintf("Loaded %d live dialogs from Telegram (%d hidden).", len(m.rawChats), len(m.hiddenChats)))
+				return m, m.loadChatMessagesCmd(m.chats[0])
+			}
 			m.chatCursor = 0
-			m.selectedChatID = m.chats[0].ChatID
-			m.syncCurrentChatAISettings()
-			m.statusText = "Live MTProto"
-			m.addTrace(fmt.Sprintf("Loaded %d live dialogs from Telegram.", len(m.chats)))
-			return m, m.loadChatMessagesCmd(m.chats[0])
+			m.selectedChatID = 0
+			m.statusText = "Live MTProto (all chats hidden)"
+			return m, nil
 		}
 		return m, nil
 

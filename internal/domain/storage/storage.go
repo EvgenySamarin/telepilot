@@ -19,6 +19,10 @@ func FavoriteChatsFilePath(dataDir string) string {
 	return filepath.Join(dataDir, "favorite_chats.json")
 }
 
+func HiddenChatsFilePath(dataDir string) string {
+	return filepath.Join(dataDir, "hidden_chats.json")
+}
+
 func LoadFavoriteChats(dataDir string) []FavoriteChatRecord {
 	path := FavoriteChatsFilePath(dataDir)
 	data, err := os.ReadFile(path)
@@ -44,6 +48,33 @@ func SaveFavoriteChats(dataDir string, favs []FavoriteChatRecord) error {
 		return err
 	}
 	return os.WriteFile(FavoriteChatsFilePath(dataDir), bytes, 0o644)
+}
+
+func LoadHiddenChats(dataDir string) []HiddenChatRecord {
+	path := HiddenChatsFilePath(dataDir)
+	data, err := os.ReadFile(path)
+	if err != nil || len(data) == 0 {
+		return nil
+	}
+	var list []HiddenChatRecord
+	if err := json.Unmarshal(data, &list); err == nil {
+		return list
+	}
+	return nil
+}
+
+func SaveHiddenChats(dataDir string, hidden []HiddenChatRecord) error {
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		return err
+	}
+	if hidden == nil {
+		hidden = []HiddenChatRecord{}
+	}
+	bytes, err := json.MarshalIndent(hidden, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(HiddenChatsFilePath(dataDir), bytes, 0o644)
 }
 
 func LoadChatAIConfigs(dataDir string) map[int64]ChatAIConfig {

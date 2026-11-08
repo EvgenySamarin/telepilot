@@ -1381,3 +1381,158 @@ func TestFavoriteChatsConfigWindowManagementAndDeletedCornerCases(t *testing.T) 
 		t.Errorf("expected Esc at block level to close modal, got %v", m.activeModal)
 	}
 }
+
+func TestHiddenChatsExclusionAndNotice(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := &config.AppConfig{
+		ProjectRoot: tmpDir,
+		DataDir:     tmpDir,
+		Language:    "en",
+	}
+	m := NewModel(cfg, nil, nil, true)
+	if len(m.chats) == 0 {
+		t.Fatalf("expected demo chats loaded in model")
+	}
+
+	initialCount := len(m.chats)
+	targetChat := m.chats[0]
+
+	// 1. Initially no chats hidden and sidebar does not contain notice
+	if len(m.hiddenChats) != 0 {
+		t.Fatalf("expected 0 hidden chats initially, got %d", len(m.hiddenChats))
+	}
+	sidebarView := m.renderSidebar(40, 25)
+	if strings.Contains(sidebarView, "hidden (check Settings 'C')") {
+		t.Errorf("sidebar should not contain hidden notice when 0 hidden chats")
+	}
+
+	// 2. Hide chat using hotkey 'H'
+	m.focus = focusChats
+	m.chatCursor = 0
+	mUpdated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'H'}})
+	m = mUpdated.(*Model)
+
+	if len(m.chats) != initialCount-1 {
+		t.Fatalf("expected visible chats count to decrease to %d, got %d", initialCount-1, len(m.chats))
+	}
+	if !m.isChatHidden(targetChat.ChatID) {
+		t.Errorf("expected targetChat %d to be marked as hidden", targetChat.ChatID)
+	}
+
+	// Verify target chat is absent from m.chats
+	for _, c := range m.chats {
+		if c.ChatID == targetChat.ChatID {
+			t.Errorf("hidden chat %d should not be present in visible chats", targetChat.ChatID)
+		}
+	}
+
+	// Check persistence
+	persisted := storage.LoadHiddenChats(m.cfg.DataDir)
+	if len(persisted) != 1 || persisted[0].ChatID != targetChat.ChatID {
+		t.Errorf("persisted hidden chats mismatch: %+v", persisted)
+	}
+
+	// 3. Verify sidebar contains hidden notice
+	sidebarView = m.renderSidebar(44, 25)
+	if !strings.Contains(sidebarView, "1 chat(s) hidden") {
+		t.Errorf("expected sidebar to show hidden notice, got:\n%s", sidebarView)
+	}
+}
+
+func TestHiddenChatsConfigModalRestore(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := &config.AppConfig{
+		ProjectRoot: tmpDir,
+		DataDir:     tmpDir,
+		Language:    "en",
+	}
+	m := NewModel(cfg, nil, nil, true)
+	if len(m.chats) < 2 {
+		t.Fatalf("expected at least 2 demo chats")
+	}
+
+	targetChat := m.chats[0]
+	initialTotal := len(m.chats)
+
+	// Hide target chat
+	m.hideChat(targetChat.ChatID)
+	if len(m.chats) != initialTotal-1 {
+		t.Fatalf("expected %d visible chats after hiding, got %d", initialTotal-1, len(m.chats))
+	}
+
+	// 1. Open Global Configuration modal
+	mUpdated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'C'}})
+	m = mUpdated.(*Model)
+	if m.activeModal != modalGlobalConfig {
+		t.Fatalf("expected activeModal to be modalGlobalConfig, got %v", m.activeModal)
+	}
+
+	// 2. Navigate down to Block 2 (Hidden Chats)
+	mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	m = mUpdated.(*Model)
+	if m.cfgBoxCursor != 1 {
+		t.Errorf("expected cfgBoxCursor 1, got %d", m.cfgBoxCursor)
+	}
+
+	mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	m = mUpdated.(*Model)
+	if m.cfgBoxCursor != 2 {
+		t.Errorf("expected cfgBoxCursor 2, got %d", m.cfgBoxCursor)
+	}
+
+	// 3. Press Enter to drill into Block 2
+	mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = mUpdated.(*Model)
+	if !m.cfgBoxEntered {
+		t.Fatalf("expected Enter to drill into Block 2 (cfgBoxEntered=true)")
+	}
+
+	// Verify modal view renders the hidden chat
+	modalView := m.renderGlobalConfigModal()
+	if !strings.Contains(modalView, "Hidden Chats (1):") {
+		t.Errorf("expected modal view to show 'Hidden Chats (1):', got:\n%s", modalView)
+	}
+	if !strings.Contains(modalView, targetChat.Title) {
+		t.Errorf("expected modal view to show hidden chat title %q", targetChat.Title)
+	}
+
+	// 4. Press 'u' to unhide chat
+	mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'u'}})
+	m = mUpdated.(*Model)
+
+	if m.isChatHidden(targetChat.ChatID) {
+		t.Errorf("expected targetChat %d to be unhidden", targetChat.ChatID)
+	}
+	if len(m.hiddenChats) != 0 {
+		t.Errorf("expected 0 hidden chats after unhide, got %d", len(m.hiddenChats))
+	}
+	if len(m.chats) != initialTotal {
+		t.Errorf("expected visible chats to be restored to %d, got %d", initialTotal, len(m.chats))
+	}
+
+	// Check persistence
+	persisted := storage.LoadHiddenChats(m.cfg.DataDir)
+	if len(persisted) != 0 {
+		t.Errorf("expected 0 persisted hidden chats after unhide, got %d", len(persisted))
+	}
+
+	// 5. Press Esc to exit Block 2 back to block level
+	mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = mUpdated.(*Model)
+	if m.cfgBoxEntered {
+		t.Errorf("expected Esc to exit block (cfgBoxEntered=false)")
+	}
+
+	// 6. Press Esc to close modal
+	mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = mUpdated.(*Model)
+	if m.activeModal != modalNone {
+		t.Errorf("expected modal closed, got %v", m.activeModal)
+	}
+
+	// 7. Verify sidebar notice is gone
+	sidebarView := m.renderSidebar(40, 25)
+	if strings.Contains(sidebarView, "hidden (check Settings 'C')") {
+		t.Errorf("expected sidebar notice to disappear after unhiding all chats")
+	}
+}

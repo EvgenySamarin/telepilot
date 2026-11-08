@@ -94,11 +94,12 @@ Run any skill on the selected chat's messages and view its natural output in Tab
 
 ---
 
-### 4. Global Configuration, Bilingual Language Switcher & Favourite Chats (`C`)
-TelePilot features first-class internationalization with instant switching between English and Russian, along with dedicated Favourite / Pinned Chats management:
-- Press **`C`** (capital C) anytime to open the **Global Configuration** modal.
+### 4. Global Configuration, Bilingual Language Switcher, Favourite & Hidden Chats (`C`)
+TelePilot features first-class internationalization with instant switching between English and Russian, along with dedicated Favourite / Pinned and Hidden Chats management:
+- Press **`C`** (capital C) anytime to open the **Global Configuration** modal with intuitive 2-level box navigation (`Enter` to enter a block, `Esc` to return).
 - Toggle between **English (`En`)** and **Russian (`Ru — Русский`)** using `Space` or `1`/`2` keys.
 - Inspect and manage **Favourite / Pinned Chats**: easily delete chats from your favourites list (especially corner cases where a chat was deleted from another Telegram client and is no longer present in active dialogs).
+- Inspect and manage **Hidden Chats**: hide noisy or private chats directly from the sidebar with **`H`** (or `x`), excluding them from the visible list. When chats are hidden, an indicator item (`👁 X chat(s) hidden`) appears under the chats sidebar. Quickly restore any chat at any time in Block 2 of the Settings modal (`d`/`x`/`u`).
 - Live localization across all top status bars, sidebars, tabs, cards, modals, and keyboard hints.
 
 <p align="center">
@@ -128,6 +129,7 @@ data/
 ├── chat_ai_config.json      # Per-chat AI status, active skill, auto-reply, send mode & single-shot state
 ├── chat_skill_outputs.json  # Cached AI skill outputs & execution metadata per chat
 ├── favorite_chats.json      # Persisted favourite / pinned chats list
+├── hidden_chats.json        # Persisted hidden chats list
 └── outputs/                 # Exported Markdown output files (<chat_slug>_output.md) for QuickLook (v) & Finder (o)
 
 .agents/skills/              # Modular AI skills (SKILL.md) loaded dynamically with live reload
@@ -181,6 +183,7 @@ telepilot --qr
 | **`\` / `/`** | Chats Sidebar | Vim-style search through chats by title or username (`Enter`: Open, `Esc`: Clear) |
 | **`Enter` / `Space`** | Sidebar | Open and select the highlighted chat `(●)` |
 | **`p` / `f`** | Chats Sidebar / Global | Pin or unpin favourite chat on top of the chats list (`📌`) |
+| **`H` / `x`** | Chats Sidebar | Hide chat from list (excluded from view; managed in Settings `C`) |
 | **`i` / `Enter`** | Tab 1 (`Live Chat`) | Focus the compose box to write and send a message (`Esc` to cancel) |
 | **`a`** | Tab 1 (`Live Chat`) | Generate an on-demand AI reply for the active chat |
 | **`m`** | Tab 1, 2, 3 | Open **Single-Shot AI Instruction** modal (`Enter`: Replace & Run, `Ctrl+A`: Append, `Ctrl+X`: Stop) |

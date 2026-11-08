@@ -692,6 +692,67 @@ func (m *Model) renderGlobalConfigModal() string {
 	rows = append(rows, "")
 
 	// -------------------------------------------------------------
+	// Block 2: Hidden Chats
+	// -------------------------------------------------------------
+	var hiddenBody string
+	if len(m.hiddenChats) == 0 {
+		hiddenBody = lipgloss.NewStyle().Foreground(colMuted).Italic(true).Render(m.T("cfg_modal_hidden_empty"))
+	} else {
+		maxVisibleHidden := 4
+		startHidden := 0
+		if m.cfgHiddenCursor >= maxVisibleHidden {
+			startHidden = m.cfgHiddenCursor - maxVisibleHidden + 1
+		}
+		endHidden := minInt(len(m.hiddenChats), startHidden+maxVisibleHidden)
+
+		var hiddenRows []string
+		isEnteredHidden := m.cfgBoxCursor == 2 && m.cfgBoxEntered
+		for i := startHidden; i < endHidden; i++ {
+			hidden := m.hiddenChats[i]
+			isCursor := isEnteredHidden && i == m.cfgHiddenCursor
+			prefix := "  "
+			if isCursor {
+				prefix = "▸ "
+			}
+
+			actionHint := ""
+			if isCursor {
+				actionHint = "  [d/x/u: Unhide]"
+			}
+
+			titleClean := sanitizeTerminalText(hidden.Title)
+			rawItem := fmt.Sprintf("%s👁 %s (ID: %d)%s", prefix, titleClean, hidden.ChatID, actionHint)
+			innerTextW := cardW - 4
+			if lipgloss.Width(rawItem) > innerTextW {
+				overflow := lipgloss.Width(rawItem) - innerTextW
+				titleRunes := []rune(titleClean)
+				if len(titleRunes) > overflow+2 {
+					titleClean = string(titleRunes[:len(titleRunes)-overflow-2]) + ".."
+				}
+				rawItem = fmt.Sprintf("%s👁 %s (ID: %d)%s", prefix, titleClean, hidden.ChatID, actionHint)
+			}
+
+			var renderedItem string
+			if isCursor {
+				renderedItem = lipgloss.NewStyle().Foreground(colYellow).Bold(true).Render(rawItem)
+			} else {
+				renderedItem = lipgloss.NewStyle().Foreground(colText).Render(rawItem)
+			}
+			hiddenRows = append(hiddenRows, renderedItem)
+		}
+		if len(m.hiddenChats) > maxVisibleHidden {
+			scrollInfo := lipgloss.NewStyle().Foreground(colMuted).Render(
+				fmt.Sprintf("  [%d/%d hidden chats — use j/k to navigate]", m.cfgHiddenCursor+1, len(m.hiddenChats)),
+			)
+			hiddenRows = append(hiddenRows, scrollInfo)
+		}
+		hiddenBody = strings.Join(hiddenRows, "\n")
+	}
+
+	rows = append(rows, m.renderConfigBox(2, m.T("cfg_modal_hidden_title", len(m.hiddenChats)), hiddenBody, cardW, colYellow)...)
+	rows = append(rows, "")
+
+	// -------------------------------------------------------------
 	// System Information & Storage Paths Box
 	// -------------------------------------------------------------
 	infoLines := []string{
@@ -731,10 +792,13 @@ func (m *Model) renderGlobalConfigModal() string {
 
 	var hintText string
 	if m.cfgBoxEntered {
-		if m.cfgBoxCursor == 0 {
+		switch m.cfgBoxCursor {
+		case 0:
 			hintText = m.T("cfg_modal_entered_lang_hint")
-		} else {
+		case 1:
 			hintText = m.T("cfg_modal_entered_favs_hint")
+		case 2:
+			hintText = m.T("cfg_modal_entered_hidden_hint")
 		}
 	} else {
 		hintText = m.T("cfg_modal_block_nav_hint")
@@ -777,6 +841,7 @@ func (m *Model) renderHelpModal() string {
 			{"g / G, Ctrl+d/Ctrl+u", "Быстрая навигация по списку сообщений или результату ИИ"},
 			{"Enter / Space (Чаты)", "Открыть выбранный чат (только 1 активный чат)"},
 			{"p / f (Чаты)", "Закрепить/открепить чат наверху списка"},
+			{"H / x (Чаты)", "Скрыть чат из списка (управление в Настройках 'C')"},
 			{"\\ или /", "Быстрый Vim-поиск по окну чатов (Enter выбрать, Esc сброс)"},
 			{"i / Enter (Вкл. 1)", "Написать сообщение в чат (Enter отправить, Esc отмена)"},
 			{"v (Вкл. 1 / 2 / 3)", "Прослушать голос / открыть медиа (QuickLook) / навык / отчет"},
@@ -798,6 +863,7 @@ func (m *Model) renderHelpModal() string {
 			{"g / G, Ctrl+d/Ctrl+u", "Jump to top/bottom or half-page scroll"},
 			{"Enter / Space (Chat)", "Select & open chat in Tab 1 (single-chat selection)"},
 			{"p / f (Chat)", "Pin / unpin favourite chat on top of list"},
+			{"H / x (Chat)", "Hide chat from list (manage in Settings 'C')"},
 			{"\\ or /", "Vim-style search in Chats window (Enter open, Esc clear)"},
 			{"i / Enter (Tab 1)", "Compose message in live chat (Enter to send, Esc to cancel)"},
 			{"v (Tab 1 / 2 / 3)", "Play voice / QuickLook media / Preview skill / QuickLook output"},

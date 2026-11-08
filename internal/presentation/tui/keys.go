@@ -517,6 +517,35 @@ func (m *Model) handleModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			}
+
+			if m.cfgBoxCursor == 2 {
+				// Inside Block 2: Hidden Chats
+				switch key {
+				case "up", "k":
+					if m.cfgHiddenCursor > 0 {
+						m.cfgHiddenCursor--
+					}
+					return m, nil
+
+				case "down", "j":
+					if m.cfgHiddenCursor < len(m.hiddenChats)-1 {
+						m.cfgHiddenCursor++
+					}
+					return m, nil
+
+				case "d", "x", "u", "delete", "backspace", " ":
+					if m.cfgHiddenCursor >= 0 && m.cfgHiddenCursor < len(m.hiddenChats) {
+						target := m.hiddenChats[m.cfgHiddenCursor]
+						m.unhideChat(target.ChatID)
+					}
+					return m, nil
+
+				case "enter":
+					m.cfgBoxEntered = false
+					return m, nil
+				}
+				return m, nil
+			}
 			return m, nil
 		}
 
@@ -539,13 +568,13 @@ func (m *Model) handleModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "down", "j":
-			if m.cfgBoxCursor < 1 {
+			if m.cfgBoxCursor < 2 {
 				m.cfgBoxCursor++
 			}
 			return m, nil
 
 		case "tab", "shift+tab":
-			m.cfgBoxCursor = (m.cfgBoxCursor + 1) % 2
+			m.cfgBoxCursor = (m.cfgBoxCursor + 1) % 3
 			return m, nil
 
 		case "1", "e", "E":
@@ -693,6 +722,24 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		if targetChatID != 0 {
 			m.togglePinChat(targetChatID)
+			return m, nil
+		}
+
+	case "H":
+		targetChatID := m.selectedChatID
+		if m.focus == focusChats && len(m.chats) > 0 {
+			matches := m.filteredChatIndices()
+			if len(matches) > 0 {
+				pos := m.filteredChatCursorPos(matches)
+				if pos >= 0 && pos < len(matches) {
+					targetChatID = m.chats[matches[pos]].ChatID
+				}
+			} else if m.chatCursor >= 0 && m.chatCursor < len(m.chats) {
+				targetChatID = m.chats[m.chatCursor].ChatID
+			}
+		}
+		if targetChatID != 0 {
+			m.hideChat(targetChatID)
 			return m, nil
 		}
 
@@ -917,7 +964,24 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case "x":
-		if m.activeTab == 2 {
+		if m.focus == focusChats {
+			targetChatID := m.selectedChatID
+			if len(m.chats) > 0 {
+				matches := m.filteredChatIndices()
+				if len(matches) > 0 {
+					pos := m.filteredChatCursorPos(matches)
+					if pos >= 0 && pos < len(matches) {
+						targetChatID = m.chats[matches[pos]].ChatID
+					}
+				} else if m.chatCursor >= 0 && m.chatCursor < len(m.chats) {
+					targetChatID = m.chats[m.chatCursor].ChatID
+				}
+			}
+			if targetChatID != 0 {
+				m.hideChat(targetChatID)
+				return m, nil
+			}
+		} else if m.activeTab == 2 {
 			ch := m.activeChat()
 			if ch != nil {
 				m.cancelSingleShotForChat(ch.ChatID, ch.Title)

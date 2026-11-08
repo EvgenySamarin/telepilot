@@ -55,3 +55,48 @@ func TestFavoriteChatsStorage(t *testing.T) {
 	}
 }
 
+func TestHiddenChatsStorage(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "hidden_chats_test_*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// 1. Loading from empty dir returns empty slice
+	hidden := LoadHiddenChats(tempDir)
+	if len(hidden) != 0 {
+		t.Errorf("expected 0 hidden chats initially, got %d", len(hidden))
+	}
+
+	// 2. Save records
+	records := []HiddenChatRecord{
+		{ChatID: 2001, Title: "Spam Channel", ChatType: "channel", HiddenAt: "2026-11-08 11:00:00"},
+		{ChatID: 2002, Title: "Muted Group", ChatType: "group", Username: "muted_grp", HiddenAt: "2026-11-08 11:05:00"},
+	}
+	if err := SaveHiddenChats(tempDir, records); err != nil {
+		t.Fatalf("failed to save hidden chats: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(tempDir, "hidden_chats.json")); err != nil {
+		t.Errorf("hidden_chats.json file not created: %v", err)
+	}
+
+	// 3. Load back
+	loaded := LoadHiddenChats(tempDir)
+	if len(loaded) != 2 {
+		t.Fatalf("expected 2 loaded hidden chats, got %d", len(loaded))
+	}
+	if loaded[0].ChatID != 2001 || loaded[0].Title != "Spam Channel" {
+		t.Errorf("unexpected record 0: %+v", loaded[0])
+	}
+
+	// 4. Save empty list
+	if err := SaveHiddenChats(tempDir, []HiddenChatRecord{}); err != nil {
+		t.Fatalf("failed to save empty list: %v", err)
+	}
+	loadedEmpty := LoadHiddenChats(tempDir)
+	if len(loadedEmpty) != 0 {
+		t.Errorf("expected 0 records after saving empty list, got %d", len(loadedEmpty))
+	}
+}
+
