@@ -833,11 +833,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.statusText = "Opened in Finder"
 			m.addTrace("Revealed live media in Finder: " + msg.filePath)
 		} else if msg.mediaType == "voice" {
-			_ = exec.Command("afplay", msg.filePath).Start()
+			_ = playVoiceAudio(msg.filePath)
 			m.addTrace("Playing live voice: " + msg.filePath)
 		} else {
-			_ = exec.Command("qlmanage", "-p", msg.filePath).Start()
-			m.addTrace("QuickLook live media: " + msg.filePath)
+			_ = openFileInViewer(msg.filePath)
+			m.addTrace("Opened live media in default viewer: " + msg.filePath)
 		}
 		return m, nil
 

@@ -386,7 +386,7 @@ func (m *Model) handleModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, m.startQRLoginCmd()
 		case "v":
 			if m.qrPNGPath != "" {
-				_ = exec.Command("qlmanage", "-p", m.qrPNGPath).Start()
+				_ = openFileInViewer(m.qrPNGPath)
 			}
 			return m, nil
 		}
@@ -999,11 +999,11 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					if lm.CachedPath != "" {
 						if _, err := os.Stat(lm.CachedPath); err == nil {
 							if lm.MediaType == "voice" {
-								_ = exec.Command("afplay", lm.CachedPath).Start()
+								_ = playVoiceAudio(lm.CachedPath)
 								m.addTrace("Playing live voice: " + lm.CachedPath)
 							} else {
-								_ = exec.Command("qlmanage", "-p", lm.CachedPath).Start()
-								m.addTrace("QuickLook live media: " + lm.CachedPath)
+								_ = openFileInViewer(lm.CachedPath)
+								m.addTrace("Opened live media in default viewer: " + lm.CachedPath)
 							}
 							return m, nil
 						}
@@ -1022,10 +1022,8 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case 3:
 			rec := m.activeSkillOutputRecord()
 			if rec != nil && rec.OutputPath != "" {
-				if isMacOS() {
-					_ = exec.Command("qlmanage", "-p", rec.OutputPath).Start()
-				}
-				m.addTrace("QuickLook skill output: " + rec.OutputPath)
+				_ = openFileInViewer(rec.OutputPath)
+				m.addTrace("Opened skill output in viewer: " + rec.OutputPath)
 			}
 		}
 	}

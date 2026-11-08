@@ -80,7 +80,7 @@ Run any skill on the selected chat's messages and view its natural output in Tab
 - **Skill & Execution Metadata**: Clear breakdown of the active skill, skill hash, model used, timestamp, message count, and output file path (`data/outputs/<chat>_output.md`).
 - **One-Key Skill Execution (`r`)**: Press **`r`** anywhere in Tab 2 or Tab 3 to run the active skill directly on the selected chat. Upon completion, TelePilot switches directly to Tab 3 to display the result.
 - **Native macOS QuickLook (`v`) & Finder (`o`)**:
-  - Press **`v`** to QuickLook the generated Markdown report via `qlmanage -p`.
+  - Press **`v`** to view the generated Markdown report in your default macOS viewer.
   - Press **`o`** to reveal the output Markdown file in macOS Finder via `open -R`.
 - **Persistent Storage**: Latest skill results are saved per-chat in `data/chat_skill_outputs.json` and persisted as Markdown files in `data/outputs/`.
 

@@ -71,6 +71,24 @@ func isMacOS() bool {
 	return runtime.GOOS == "darwin"
 }
 
+// openFileInViewer opens the target file in its native viewer application (Preview, QuickTime, default viewer)
+// using macOS `open <path>`. Unlike `qlmanage -p`, `open` reliably delegates to macOS LaunchServices and avoids
+// SIGABRT crashes caused by QuickLook sandbox assertions on modern macOS versions.
+func openFileInViewer(filePath string) error {
+	if !isMacOS() {
+		return exec.Command("xdg-open", filePath).Start()
+	}
+	return exec.Command("open", filePath).Start()
+}
+
+// playVoiceAudio plays voice notes using native audio tools (afplay on macOS, aplay on Linux).
+func playVoiceAudio(filePath string) error {
+	if !isMacOS() {
+		return exec.Command("aplay", filePath).Start()
+	}
+	return exec.Command("afplay", filePath).Start()
+}
+
 func (m *Model) openSelectedSkillInFinder() {
 	_ = os.MkdirAll(m.cfg.SkillsDir(), 0o755)
 	if len(m.skillList) > 0 {
