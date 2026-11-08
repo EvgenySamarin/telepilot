@@ -1122,26 +1122,14 @@ func (m *Model) renderRePromptTab(rec *storage.SkillOutputRecord, innerW int) []
 			}
 			kindBadge = padRightVisual(truncateSingleLine(kindBadge, kindW), kindW)
 
-			hashPart := fmt.Sprintf("(%s)", sk.Hash)
-			// Total non-desc width: prefix(2) + activeBadge(10) + space(1) + nameW + space(1) + kindW + space(1) + space(1) + len(hashPart)
-			fixedW := 2 + 10 + 1 + nameW + 1 + kindW + 1 + 1 + len(hashPart)
-			descW := innerTextW - fixedW
-			if descW < 8 {
-				// On very narrow terminals, omit the hash suffix so the row still fits on 1 line
-				hashPart = ""
-				fixedW = 2 + 10 + 1 + nameW + 1 + kindW + 1
-				descW = maxInt(6, innerTextW-fixedW)
-			}
+			// Total non-desc width: prefix(2) + activeBadge(10) + space(1) + nameW + space(1) + kindW + space(1)
+			fixedW := 2 + 10 + 1 + nameW + 1 + kindW + 1
+			descW := maxInt(10, innerTextW-fixedW)
 			isSkillActive := m.activeTab == 2 && idx == m.skillCursor && (inSkillsBox || m.tab2BoxCursor == 3 || m.focus == focusMain)
 			desc := renderRunningLine(sk.Description, descW, isSkillActive, m.marqueeTick)
 
-			var row string
-			if hashPart != "" {
-				row = fmt.Sprintf("%s%s %s %s %s %s", prefix, activeBadge, nameStr, kindBadge, desc, hashPart)
-			} else {
-				row = fmt.Sprintf("%s%s %s %s %s", prefix, activeBadge, nameStr, kindBadge, desc)
-			}
-			skillRows = append(skillRows, row)
+			row := fmt.Sprintf("%s%s %s %s %s", prefix, activeBadge, nameStr, kindBadge, desc)
+			skillRows = append(skillRows, truncateSingleLine(row, innerTextW))
 		}
 	}
 

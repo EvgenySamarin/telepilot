@@ -446,6 +446,10 @@ func (m *Model) handleModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.cfgBoxEntered = false
 				m.activeModal = modalNone
 				return m, nil
+
+			case "ctrl+r":
+				m.resetDefaultSkills()
+				return m, nil
 			}
 
 			if m.cfgBoxCursor == 0 {
@@ -554,6 +558,10 @@ func (m *Model) handleModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "esc", "q":
 			// At block level, Esc/q closes the modal window
 			m.activeModal = modalNone
+			return m, nil
+
+		case "ctrl+r":
+			m.resetDefaultSkills()
 			return m, nil
 
 		case "enter":

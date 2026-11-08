@@ -916,6 +916,17 @@ func (m *Model) reloadSkills() {
 	}
 }
 
+func (m *Model) resetDefaultSkills() {
+	if err := skills.ResetDefaults(m.cfg.SkillsDir()); err != nil {
+		m.statusText = fmt.Sprintf("Failed to reset skills: %v", err)
+		m.addTrace(fmt.Sprintf("Failed to reset default skills: %v", err))
+		return
+	}
+	m.reloadSkills()
+	m.statusText = m.T("cfg_modal_reset_skills_success")
+	m.addTrace("Restored all bundled default AI skills into " + m.cfg.SkillsDir())
+}
+
 // syncSkillsFromDisk checks whether any skills were added, removed, or modified externally
 // (e.g. via macOS Finder or a GUI editor) and reloads them in real time without losing cursor state.
 func (m *Model) syncSkillsFromDisk() bool {

@@ -785,10 +785,11 @@ func (m *Model) renderGlobalConfigModal() string {
 	}
 	btnEnter := lipgloss.NewStyle().Background(colBlue).Foreground(colBg).Bold(true).Width(btnW).Align(lipgloss.Center).Render(m.T("cfg_modal_btn_enter"))
 	btnSave := lipgloss.NewStyle().Background(colGreen).Foreground(colBg).Bold(true).Width(btnW).Align(lipgloss.Center).Render(m.T("cfg_modal_btn_save"))
+	btnReset := lipgloss.NewStyle().Background(colYellow).Foreground(colBg).Bold(true).Width(btnW).Align(lipgloss.Center).Render(m.T("cfg_modal_btn_reset_skills"))
 	btnEsc := lipgloss.NewStyle().Background(colBorder).Foreground(colText).Width(btnW).Align(lipgloss.Center).Render(m.T("cfg_modal_btn_cancel"))
 
 	btnRow1 := lipgloss.JoinHorizontal(lipgloss.Center, btnEnter, "  ", btnSave)
-	btnRow2 := lipgloss.JoinHorizontal(lipgloss.Center, btnEsc)
+	btnRow2 := lipgloss.JoinHorizontal(lipgloss.Center, btnReset, "  ", btnEsc)
 	rows = append(rows, btnRow1, "", btnRow2, "")
 
 	var hintText string

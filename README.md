@@ -101,6 +101,7 @@ TelePilot features first-class internationalization with instant switching betwe
 - Inspect and manage **Favourite / Pinned Chats**: easily delete chats from your favourites list (especially corner cases where a chat was deleted from another Telegram client and is no longer present in active dialogs).
 - Inspect and manage **Hidden Chats**: hide noisy or private chats directly from the sidebar with **`H`** (or `x`), excluding them from the visible list. When chats are hidden, an indicator item (`👁  X chat(s) hidden`) appears under the chats sidebar. Quickly restore any chat at any time in Block 2 of the Settings modal (`d`/`x`/`u`).
   - **Sync & Performance Optimization**: Hidden chats are completely excluded from MTProto live push streams, background message polling, AI auto-replies, and media caching. Hiding high-traffic channels or noisy group chats significantly reduces network sync pressure, CPU overhead, and UI re-renders.
+- **Reset Default AI Skills (`Ctrl+R`)**: One-click restore for all bundled default skills from binary memory back into `.agents/skills/` without affecting custom skills.
 - Live localization across all top status bars, sidebars, tabs, cards, modals, and keyboard hints.
 
 <p align="center">
@@ -200,6 +201,7 @@ telepilot --qr
 | **`v` / `o`** | Tab 1, 2, 3 | Play voice / QuickLook media or reveal in Finder (`o`) (Tab 1), preview / Finder (Tab 2), QuickLook / Finder (`o`) (Tab 3) |
 | **`c`** | Global | Open **AI Engine Configuration** modal (Antigravity CLI `agy` or Gemini API) |
 | **`C`** | Global | Open **Global Configuration** modal (language switch & favourite/pinned chats management) |
+| **`Ctrl+R`** | Global Config (`C`) | Reset/restore bundled default AI skills from binary memory into `.agents/skills/` |
 | **`L`** | Global | Open **MTProto Connection Diagnostics & QR Code Login** modal |
 | **`?` / `q`** | Global | Show Help modal (`?`) / Quit (`q`) |
 

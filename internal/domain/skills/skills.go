@@ -64,10 +64,40 @@ type Skill struct {
 	Hash        string // sha256 of the full SKILL.md content (first 12 hex chars)
 }
 
-// EnsureDefaults writes the bundled default skills into dir, never overwriting
-// files that already exist (so user edits are preserved).
+// EnsureDefaults writes the bundled default skills into dir if the directory is fresh
+// or has not been initialized yet. Once initialized, it creates a .initialized marker
+// so that user deletions are preserved and defaults are not resurrected on every restart.
 func EnsureDefaults(dir string) error {
-	return fs.WalkDir(defaultsFS, "defaults", func(p string, d fs.DirEntry, err error) error {
+	if dir == "" {
+		return nil
+	}
+
+	marker := filepath.Join(dir, ".initialized")
+	if _, err := os.Stat(marker); err == nil {
+		// Already initialized: respect user deletions and edits
+		return nil
+	}
+
+	// If directory already has existing skills, mark as initialized without resurrecting deleted ones
+	if entries, err := os.ReadDir(dir); err == nil {
+		hasSkills := false
+		for _, e := range entries {
+			if !strings.HasPrefix(e.Name(), ".") {
+				hasSkills = true
+				break
+			}
+		}
+		if hasSkills {
+			_ = os.WriteFile(marker, []byte("initialized\n"), 0o644)
+			return nil
+		}
+	}
+
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+
+	walkErr := fs.WalkDir(defaultsFS, "defaults", func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -85,6 +115,42 @@ func EnsureDefaults(dir string) error {
 		}
 		return os.WriteFile(target, data, 0o644)
 	})
+	if walkErr == nil {
+		_ = os.WriteFile(marker, []byte("initialized\n"), 0o644)
+	}
+	return walkErr
+}
+
+// ResetDefaults restores all bundled default skills from defaultsFS into dir,
+// ensuring any missing or modified default files are restored,
+// while preserving any custom user-created skills.
+func ResetDefaults(dir string) error {
+	if dir == "" {
+		return fmt.Errorf("empty skills directory")
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	marker := filepath.Join(dir, ".initialized")
+	walkErr := fs.WalkDir(defaultsFS, "defaults", func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel("defaults", p)
+		target := filepath.Join(dir, rel)
+		if d.IsDir() {
+			return os.MkdirAll(target, 0o755)
+		}
+		data, readErr := defaultsFS.ReadFile(p)
+		if readErr != nil {
+			return readErr
+		}
+		return os.WriteFile(target, data, 0o644)
+	})
+	if walkErr == nil {
+		_ = os.WriteFile(marker, []byte("initialized\n"), 0o644)
+	}
+	return walkErr
 }
 
 // Load parses every <dir>/<name>/SKILL.md (and also normalizes standalone .md files

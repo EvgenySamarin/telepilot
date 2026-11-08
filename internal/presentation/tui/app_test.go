@@ -1603,3 +1603,45 @@ func TestHiddenChatsSyncExclusion(t *testing.T) {
 		t.Errorf("expected non-nil loadChatMessagesCmd for visible chat")
 	}
 }
+
+func TestConfigModalResetDefaultSkills(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := &config.AppConfig{
+		ProjectRoot: tmpDir,
+		DataDir:     tmpDir,
+		Language:    "en",
+	}
+	m := NewModel(cfg, nil, nil, true)
+
+	initialCount := len(m.skillList)
+	if initialCount == 0 {
+		t.Fatalf("expected skills loaded in NewModel")
+	}
+
+	// Delete standup-digest from disk
+	targetSkillDir := filepath.Join(cfg.SkillsDir(), "standup-digest")
+	_ = os.RemoveAll(targetSkillDir)
+	m.reloadSkills()
+
+	if len(m.skillList) != initialCount-1 {
+		t.Fatalf("expected skills count to decrease to %d, got %d", initialCount-1, len(m.skillList))
+	}
+
+	// Open Global Config modal
+	mUpdated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'C'}})
+	m = mUpdated.(*Model)
+	if m.activeModal != modalGlobalConfig {
+		t.Fatalf("expected modalGlobalConfig open, got %v", m.activeModal)
+	}
+
+	// Press Ctrl+R to reset default skills
+	mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlR})
+	m = mUpdated.(*Model)
+
+	if len(m.skillList) != initialCount {
+		t.Errorf("expected skills count to be restored to %d, got %d", initialCount, len(m.skillList))
+	}
+	if !strings.Contains(m.statusText, "restored") {
+		t.Errorf("expected statusText to mention restored, got %q", m.statusText)
+	}
+}

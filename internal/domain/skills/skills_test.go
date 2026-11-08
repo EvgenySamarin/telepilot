@@ -60,6 +60,63 @@ func TestEnsureDefaultsAndLoad(t *testing.T) {
 	}
 }
 
+func TestEnsureDefaultsSeedOnceDoesNotResurrectDeleted(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "skills-seed-test-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// 1. Initial call populates all default skills
+	if err := EnsureDefaults(tmpDir); err != nil {
+		t.Fatalf("EnsureDefaults failed: %v", err)
+	}
+
+	initialList, _ := Load(tmpDir)
+	if len(initialList) == 0 {
+		t.Fatalf("expected populated skills on fresh dir")
+	}
+
+	// 2. Delete one skill (e.g. standup-digest)
+	targetSkillDir := filepath.Join(tmpDir, "standup-digest")
+	if err := os.RemoveAll(targetSkillDir); err != nil {
+		t.Fatalf("failed to delete skill dir: %v", err)
+	}
+
+	afterDeleteList, _ := Load(tmpDir)
+	if _, found := Find(afterDeleteList, "standup-digest"); found {
+		t.Fatalf("expected standup-digest to be deleted")
+	}
+
+	// 3. Call EnsureDefaults again (simulating subsequent application startup)
+	if err := EnsureDefaults(tmpDir); err != nil {
+		t.Fatalf("second EnsureDefaults failed: %v", err)
+	}
+
+	// 4. Verify standup-digest was NOT resurrected
+	reloadedList, _ := Load(tmpDir)
+	if _, found := Find(reloadedList, "standup-digest"); found {
+		t.Errorf("EnsureDefaults should NOT resurrect deleted skill 'standup-digest'")
+	}
+	if len(reloadedList) != len(initialList)-1 {
+		t.Errorf("expected %d skills, got %d", len(initialList)-1, len(reloadedList))
+	}
+
+	// 5. Explicitly reset defaults via ResetDefaults
+	if err := ResetDefaults(tmpDir); err != nil {
+		t.Fatalf("ResetDefaults failed: %v", err)
+	}
+
+	// 6. Verify standup-digest is now restored
+	restoredList, _ := Load(tmpDir)
+	if _, found := Find(restoredList, "standup-digest"); !found {
+		t.Errorf("expected ResetDefaults to restore 'standup-digest'")
+	}
+	if len(restoredList) != len(initialList) {
+		t.Errorf("expected restored count %d, got %d", len(initialList), len(restoredList))
+	}
+}
+
 func TestClassifyMedia(t *testing.T) {
 	cases := []struct {
 		mType string
