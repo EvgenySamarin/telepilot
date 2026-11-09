@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -179,6 +180,14 @@ func (m *Model) renderBottomBar() string {
 				keyPair{"m", m.T("key_notes")},
 				keyPair{"v", m.T("key_quicklook")},
 				keyPair{"o", m.T("key_finder")},
+			)
+		case 4:
+			keys = append(keys,
+				keyPair{"o", m.T("key_finder")},
+				keyPair{"v", "Viewer"},
+				keyPair{"c", "Copy Trace"},
+				keyPair{"Ctrl+L", "Clear"},
+				keyPair{"Ctrl+X", "Stop Tasks"},
 			)
 		}
 		keys = append(keys,
@@ -994,6 +1003,7 @@ func (m *Model) renderRePromptTab(rec *storage.SkillOutputRecord, innerW int) []
 			"    [s]     Режим отправки ИИ: В черновик поля ввода (Enter) или Сразу в чат",
 			"    [A]     Сгенерировать ответ ИИ сейчас (во вкладке 1 — клавиша 'a')",
 			"    [m]     Разовая команда ИИ (запуск / дополнение / стоп)",
+			"    [Ctrl+X] Остановить все фоновые задачи (или 'x' для выбранного чата)",
 		}, "\n")
 	} else {
 		actionsBody = strings.Join([]string{
@@ -1009,6 +1019,7 @@ func (m *Model) renderRePromptTab(rec *storage.SkillOutputRecord, innerW int) []
 			"    [s]     Toggle AI Send Mode (Draft to Compose Box vs Auto-Send)",
 			"    [A]     Generate AI reply right now (or press 'a' in Tab 1 Live Chat)",
 			"    [m]     Single-Shot AI instruction (run / append / stop)",
+			"    [Ctrl+X] Stop all background scheduled tasks (or 'x' for chat)",
 		}, "\n")
 	}
 	b0Start := len(out)
@@ -1203,12 +1214,57 @@ func (m *Model) renderRePromptTab(rec *storage.SkillOutputRecord, innerW int) []
 
 func (m *Model) renderTraceTab(innerW int) []string {
 	var out []string
-	for _, hl := range wrapTextBlock(m.T("trace_hdr"), innerW) {
-		out = append(out, lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render(padOrTruncate(hl, innerW)))
+	headerTitle := "Real-Time Execution & MTProto Diagnostic Trace"
+	out = append(out, lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render("▶ "+headerTitle))
+
+	logPath := m.traceLogFilePath()
+	relPath := logPath
+	if cwd, err := os.Getwd(); err == nil {
+		if rel, err := filepath.Rel(cwd, logPath); err == nil && !strings.HasPrefix(rel, "..") {
+			relPath = rel
+		}
 	}
-	out = append(out, "")
+
+	actionsBar := fmt.Sprintf("%s %s  %s %s  %s %s  %s %s  %s %s",
+		lipgloss.NewStyle().Foreground(colYellow).Bold(true).Render("[o]"),
+		lipgloss.NewStyle().Foreground(colText).Render("Finder"),
+		lipgloss.NewStyle().Foreground(colYellow).Bold(true).Render("[v]"),
+		lipgloss.NewStyle().Foreground(colText).Render("Viewer"),
+		lipgloss.NewStyle().Foreground(colYellow).Bold(true).Render("[c]"),
+		lipgloss.NewStyle().Foreground(colText).Render("Copy"),
+		lipgloss.NewStyle().Foreground(colYellow).Bold(true).Render("[Ctrl+L]"),
+		lipgloss.NewStyle().Foreground(colText).Render("Clear"),
+		lipgloss.NewStyle().Foreground(colYellow).Bold(true).Render("[Ctrl+X]"),
+		lipgloss.NewStyle().Foreground(colText).Render("Stop Tasks"),
+	)
+	metaLine := fmt.Sprintf("Log File: %s | %d lines | %s", relPath, len(m.traceLogs), actionsBar)
+	out = append(out, lipgloss.NewStyle().Foreground(colMuted).Render(truncateSingleLine(metaLine, innerW)))
+	out = append(out, lipgloss.NewStyle().Foreground(colBorder).Render(strings.Repeat("─", maxInt(10, innerW))))
+
+	schedStyle := lipgloss.NewStyle().Foreground(colYellow)
+	stopStyle := lipgloss.NewStyle().Foreground(colRed).Bold(true)
+	aiStyle := lipgloss.NewStyle().Foreground(colPurple)
+	sendStyle := lipgloss.NewStyle().Foreground(colGreen)
+	dimStyle := lipgloss.NewStyle().Foreground(colMuted)
+
 	for _, line := range m.traceLogs {
-		out = append(out, "  "+truncateSingleLine(line, innerW-4))
+		trimmed := truncateSingleLine(line, innerW-4)
+		var styledLine string
+		switch {
+		case strings.Contains(line, "🛑") || strings.Contains(line, "Stopped") || strings.Contains(line, "Cancelled"):
+			styledLine = "  " + stopStyle.Render(trimmed)
+		case strings.Contains(line, "⏰") || strings.Contains(line, "Task scheduled") || strings.Contains(line, "Executed scheduled"):
+			styledLine = "  " + schedStyle.Render(trimmed)
+		case strings.Contains(line, "failed") || strings.Contains(line, "error") || strings.Contains(line, "Failed"):
+			styledLine = "  " + stopStyle.Render(trimmed)
+		case strings.Contains(line, "Auto-Reply") || strings.Contains(line, "AI "):
+			styledLine = "  " + aiStyle.Render(trimmed)
+		case strings.Contains(line, "Sent message") || strings.Contains(line, "Live message"):
+			styledLine = "  " + sendStyle.Render(trimmed)
+		default:
+			styledLine = "  " + dimStyle.Render(trimmed)
+		}
+		out = append(out, styledLine)
 	}
 	return out
 }

@@ -31,13 +31,16 @@ type HiddenChatRecord struct {
 
 // ScheduledTask represents a delayed or repeating AI task scheduled for a Telegram chat.
 type ScheduledTask struct {
-	ID          string    `json:"id"`
-	ChatID      int64     `json:"chat_id"`
-	ChatTitle   string    `json:"chat_title"`
-	TaskPrompt  string    `json:"task_prompt"`
-	DueAt       time.Time `json:"due_at"`
-	IntervalStr string    `json:"interval,omitempty"` // e.g. "30m", "2h", "24h", "daily"
-	CreatedAt   time.Time `json:"created_at"`
+	ID          string     `json:"id"`
+	ChatID      int64      `json:"chat_id"`
+	ChatTitle   string     `json:"chat_title"`
+	TaskPrompt  string     `json:"task_prompt"`
+	DueAt       time.Time  `json:"due_at"`
+	IntervalStr string     `json:"interval,omitempty"` // e.g. "30m", "2h", "24h", "daily"
+	MaxRuns     int        `json:"max_runs,omitempty"`   // maximum executions (0 = unlimited until cancelled)
+	RunsCount   int        `json:"runs_count,omitempty"` // number of times executed
+	Until       *time.Time `json:"until,omitempty"`      // stop after this wall-clock timestamp
+	CreatedAt   time.Time  `json:"created_at"`
 }
 
 type MediaItemRecord struct {

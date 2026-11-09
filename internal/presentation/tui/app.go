@@ -3,7 +3,9 @@ package tui
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -189,6 +191,9 @@ type Model struct {
 	// Background scheduled AI tasks (persisted in data/scheduled_tasks.json)
 	scheduledTasks []storage.ScheduledTask
 
+	// Track sent message IDs to eliminate auto-reply self-echoes
+	sentMsgIDs map[int]bool
+
 	mainScroll int
 
 	statusText  string
@@ -353,6 +358,7 @@ func NewModel(cfg *config.AppConfig, aiEngine *ai.Engine, mtSvc *mtproto.Service
 		lastLiveSync:      time.Now(),
 		skillOutputs:      skillOutputs,
 		scheduledTasks:    schedTasks,
+		sentMsgIDs:        make(map[int]bool),
 		statusText:        i18n.T(cfg.Language, "status_ready"),
 		periodSpec:        cfg.DefaultPeriod,
 		runNotes:          cfg.DefaultNotes,
@@ -1021,10 +1027,51 @@ func initialAIStatusLine(cfg *config.AppConfig) string {
 
 func (m *Model) addTrace(msg string) {
 	ts := time.Now().Format("15:04:05")
-	m.traceLogs = append(m.traceLogs, fmt.Sprintf("[%s] %s", ts, msg))
-	if len(m.traceLogs) > 300 {
-		m.traceLogs = m.traceLogs[len(m.traceLogs)-300:]
+	line := fmt.Sprintf("[%s] %s", ts, msg)
+	m.traceLogs = append(m.traceLogs, line)
+	if len(m.traceLogs) > 500 {
+		m.traceLogs = m.traceLogs[len(m.traceLogs)-500:]
 	}
+	logPath := m.traceLogFilePath()
+	if f, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); err == nil {
+		_, _ = f.WriteString(line + "\n")
+		_ = f.Close()
+	}
+}
+
+func (m *Model) traceLogFilePath() string {
+	_ = os.MkdirAll(m.cfg.DataDir, 0o755)
+	return filepath.Join(m.cfg.DataDir, "trace.log")
+}
+
+// cancelScheduledTasksForChat removes all scheduled tasks for the specified chat.
+func (m *Model) cancelScheduledTasksForChat(chatID int64, chatTitle string) int {
+	var remaining []storage.ScheduledTask
+	var cancelled int
+	for _, t := range m.scheduledTasks {
+		if t.ChatID == chatID {
+			cancelled++
+		} else {
+			remaining = append(remaining, t)
+		}
+	}
+	if cancelled > 0 {
+		m.scheduledTasks = remaining
+		_ = storage.SaveScheduledTasks(m.cfg.DataDir, m.scheduledTasks)
+		m.addTrace(fmt.Sprintf("🛑 Stopped %d scheduled task(s) for '%s'", cancelled, chatTitle))
+	}
+	return cancelled
+}
+
+// cancelAllScheduledTasks removes all scheduled tasks across all chats.
+func (m *Model) cancelAllScheduledTasks() int {
+	cancelled := len(m.scheduledTasks)
+	if cancelled > 0 {
+		m.scheduledTasks = nil
+		_ = storage.SaveScheduledTasks(m.cfg.DataDir, m.scheduledTasks)
+		m.addTrace(fmt.Sprintf("🛑 Stopped ALL %d background scheduled task(s)", cancelled))
+	}
+	return cancelled
 }
 
 func (m *Model) checkScheduledTasksCmd() []tea.Cmd {
@@ -1047,8 +1094,19 @@ func (m *Model) checkScheduledTasksCmd() []tea.Cmd {
 
 	var cmds []tea.Cmd
 	for _, task := range due {
-		// If repeating task, reschedule for the next future interval
-		if task.IntervalStr != "" && task.IntervalStr != "none" {
+		task.RunsCount++
+		shouldContinue := true
+
+		if task.MaxRuns > 0 && task.RunsCount >= task.MaxRuns {
+			shouldContinue = false
+			m.addTrace(fmt.Sprintf("⏰ Scheduled task for '%s' reached target runs (%d/%d), stopped.", task.ChatTitle, task.RunsCount, task.MaxRuns))
+		}
+		if task.Until != nil && !task.Until.IsZero() && now.After(*task.Until) {
+			shouldContinue = false
+			m.addTrace(fmt.Sprintf("⏰ Scheduled task for '%s' reached expiration limit, stopped.", task.ChatTitle))
+		}
+
+		if shouldContinue && task.IntervalStr != "" && task.IntervalStr != "none" {
 			if dur, err := ai.ParseScheduleDuration(task.IntervalStr); err == nil && dur > 0 {
 				nextDue := task.DueAt.Add(dur)
 				for !nextDue.After(now) {
@@ -1118,12 +1176,19 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			// Check if Auto-Reply should trigger on a new incoming message at the end of the chat
 			last := m.liveMessages[len(m.liveMessages)-1]
+			isSelfMsg := last.IsOutgoing || strings.EqualFold(strings.TrimSpace(last.Sender), "You") || m.sentMsgIDs[last.MessageID]
 			if cfg, ok := m.chatAIConfigs[msg.chatID]; ok && cfg.Enabled && cfg.AutoReply {
-				if cfg.LastAutoRepliedMsgID == 0 {
+				if isSelfMsg {
+					if last.MessageID > cfg.LastAutoRepliedMsgID {
+						cfg.LastAutoRepliedMsgID = last.MessageID
+						m.chatAIConfigs[msg.chatID] = cfg
+						_ = storage.SaveChatAIConfigs(m.cfg.DataDir, m.chatAIConfigs)
+					}
+				} else if cfg.LastAutoRepliedMsgID == 0 {
 					cfg.LastAutoRepliedMsgID = last.MessageID
 					m.chatAIConfigs[msg.chatID] = cfg
 					_ = storage.SaveChatAIConfigs(m.cfg.DataDir, m.chatAIConfigs)
-				} else if !last.IsOutgoing && last.MessageID > cfg.LastAutoRepliedMsgID {
+				} else if last.MessageID > cfg.LastAutoRepliedMsgID {
 					cfg.LastAutoRepliedMsgID = last.MessageID
 					m.chatAIConfigs[msg.chatID] = cfg
 					_ = storage.SaveChatAIConfigs(m.cfg.DataDir, m.chatAIConfigs)
@@ -1158,13 +1223,22 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.lastLiveSync = time.Now()
 				m.addTrace(fmt.Sprintf("Live message #%d received in active chat from %s", msg.msg.MessageID, msg.msg.Sender))
 
-				if cfg, ok := m.chatAIConfigs[msg.chatID]; ok && cfg.Enabled && cfg.AutoReply && !msg.msg.IsOutgoing && msg.msg.MessageID > cfg.LastAutoRepliedMsgID {
-					cfg.LastAutoRepliedMsgID = msg.msg.MessageID
-					m.chatAIConfigs[msg.chatID] = cfg
-					_ = storage.SaveChatAIConfigs(m.cfg.DataDir, m.chatAIConfigs)
-					if ch := m.activeChat(); ch != nil && ch.ChatID == msg.chatID {
-						m.addTrace(fmt.Sprintf("Auto-Reply triggered for live incoming message #%d in '%s'", msg.msg.MessageID, ch.Title))
-						autoReplyCmd = m.generateAIChatReplyCmd(*ch, m.liveMessages, cfg.SendMode)
+				isIncomingSelf := msg.msg.IsOutgoing || strings.EqualFold(strings.TrimSpace(msg.msg.Sender), "You") || m.sentMsgIDs[msg.msg.MessageID]
+				if cfg, ok := m.chatAIConfigs[msg.chatID]; ok && cfg.Enabled && cfg.AutoReply {
+					if isIncomingSelf {
+						if msg.msg.MessageID > cfg.LastAutoRepliedMsgID {
+							cfg.LastAutoRepliedMsgID = msg.msg.MessageID
+							m.chatAIConfigs[msg.chatID] = cfg
+							_ = storage.SaveChatAIConfigs(m.cfg.DataDir, m.chatAIConfigs)
+						}
+					} else if msg.msg.MessageID > cfg.LastAutoRepliedMsgID {
+						cfg.LastAutoRepliedMsgID = msg.msg.MessageID
+						m.chatAIConfigs[msg.chatID] = cfg
+						_ = storage.SaveChatAIConfigs(m.cfg.DataDir, m.chatAIConfigs)
+						if ch := m.activeChat(); ch != nil && ch.ChatID == msg.chatID {
+							m.addTrace(fmt.Sprintf("Auto-Reply triggered for live incoming message #%d in '%s'", msg.msg.MessageID, ch.Title))
+							autoReplyCmd = m.generateAIChatReplyCmd(*ch, m.liveMessages, cfg.SendMode)
+						}
 					}
 				}
 			}
@@ -1195,22 +1269,42 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		cleanReply, directive, found := ai.ExtractScheduleDirective(reply, time.Now())
 		if found && directive != nil {
-			task := storage.ScheduledTask{
-				ID:          fmt.Sprintf("task_%d", time.Now().UnixNano()),
-				ChatID:      msg.chat.ChatID,
-				ChatTitle:   msg.chat.Title,
-				TaskPrompt:  directive.TaskPrompt,
-				DueAt:       directive.DueAt,
-				IntervalStr: directive.RepeatStr,
-				CreatedAt:   time.Now(),
+			isDuplicate := false
+			for _, existing := range m.scheduledTasks {
+				if existing.ChatID == msg.chat.ChatID && strings.EqualFold(strings.TrimSpace(existing.TaskPrompt), strings.TrimSpace(directive.TaskPrompt)) {
+					isDuplicate = true
+					break
+				}
 			}
-			m.scheduledTasks = append(m.scheduledTasks, task)
-			_ = storage.SaveScheduledTasks(m.cfg.DataDir, m.scheduledTasks)
-			logTime := directive.InStr
-			if directive.AtStr != "" {
-				logTime = "@" + directive.AtStr
+			if !isDuplicate {
+				task := storage.ScheduledTask{
+					ID:          fmt.Sprintf("task_%d", time.Now().UnixNano()),
+					ChatID:      msg.chat.ChatID,
+					ChatTitle:   msg.chat.Title,
+					TaskPrompt:  directive.TaskPrompt,
+					DueAt:       directive.DueAt,
+					IntervalStr: directive.RepeatStr,
+					MaxRuns:     directive.MaxRuns,
+					RunsCount:   0,
+					Until:       directive.Until,
+					CreatedAt:   time.Now(),
+				}
+				m.scheduledTasks = append(m.scheduledTasks, task)
+				_ = storage.SaveScheduledTasks(m.cfg.DataDir, m.scheduledTasks)
+				logTime := directive.InStr
+				if directive.AtStr != "" {
+					logTime = "@" + directive.AtStr
+				}
+				m.addTrace(fmt.Sprintf("⏰ Task scheduled for '%s' (%s): %s", msg.chat.Title, logTime, directive.TaskPrompt))
 			}
-			m.addTrace(fmt.Sprintf("⏰ Task scheduled for '%s' (%s): %s", msg.chat.Title, logTime, directive.TaskPrompt))
+
+			cleanTrim := strings.TrimSpace(cleanReply)
+			if cleanTrim == "" || isPureConfirmation(cleanTrim) {
+				m.statusText = fmt.Sprintf("⏰ Scheduled task set for '%s'", msg.chat.Title)
+				m.chatInputBuffer = ""
+				m.chatComposing = false
+				return m, nil
+			}
 		}
 		reply = cleanReply
 
@@ -1228,28 +1322,50 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case scheduleDirectiveFoundMsg:
-		task := storage.ScheduledTask{
-			ID:          fmt.Sprintf("task_%d", time.Now().UnixNano()),
-			ChatID:      msg.chatID,
-			ChatTitle:   msg.chatTitle,
-			TaskPrompt:  msg.directive.TaskPrompt,
-			DueAt:       msg.directive.DueAt,
-			IntervalStr: msg.directive.RepeatStr,
-			CreatedAt:   time.Now(),
+		isDuplicate := false
+		for _, existing := range m.scheduledTasks {
+			if existing.ChatID == msg.chatID && strings.EqualFold(strings.TrimSpace(existing.TaskPrompt), strings.TrimSpace(msg.directive.TaskPrompt)) {
+				isDuplicate = true
+				break
+			}
 		}
-		m.scheduledTasks = append(m.scheduledTasks, task)
-		_ = storage.SaveScheduledTasks(m.cfg.DataDir, m.scheduledTasks)
-		logTime := msg.directive.InStr
-		if msg.directive.AtStr != "" {
-			logTime = "@" + msg.directive.AtStr
+		if !isDuplicate {
+			task := storage.ScheduledTask{
+				ID:          fmt.Sprintf("task_%d", time.Now().UnixNano()),
+				ChatID:      msg.chatID,
+				ChatTitle:   msg.chatTitle,
+				TaskPrompt:  msg.directive.TaskPrompt,
+				DueAt:       msg.directive.DueAt,
+				IntervalStr: msg.directive.RepeatStr,
+				MaxRuns:     msg.directive.MaxRuns,
+				RunsCount:   0,
+				Until:       msg.directive.Until,
+				CreatedAt:   time.Now(),
+			}
+			m.scheduledTasks = append(m.scheduledTasks, task)
+			_ = storage.SaveScheduledTasks(m.cfg.DataDir, m.scheduledTasks)
+			logTime := msg.directive.InStr
+			if msg.directive.AtStr != "" {
+				logTime = "@" + msg.directive.AtStr
+			}
+			m.addTrace(fmt.Sprintf("⏰ Task scheduled for '%s' (%s): %s", msg.chatTitle, logTime, msg.directive.TaskPrompt))
 		}
-		m.addTrace(fmt.Sprintf("⏰ Task scheduled for '%s' (%s): %s", msg.chatTitle, logTime, msg.directive.TaskPrompt))
 		return m, nil
 
 	case scheduledTaskExecutedMsg:
 		if msg.err != nil {
 			m.addTrace(fmt.Sprintf("⏰ Scheduled task failed for '%s': %v", msg.task.ChatTitle, msg.err))
 		} else {
+			if msg.sentMsg.MessageID > 0 {
+				m.sentMsgIDs[msg.sentMsg.MessageID] = true
+				if cfg, ok := m.chatAIConfigs[msg.task.ChatID]; ok {
+					if msg.sentMsg.MessageID > cfg.LastAutoRepliedMsgID {
+						cfg.LastAutoRepliedMsgID = msg.sentMsg.MessageID
+						m.chatAIConfigs[msg.task.ChatID] = cfg
+						_ = storage.SaveChatAIConfigs(m.cfg.DataDir, m.chatAIConfigs)
+					}
+				}
+			}
 			m.addTrace(fmt.Sprintf("⏰ Executed scheduled task for '%s': %s", msg.task.ChatTitle, truncateSingleLine(msg.text, 60)))
 			if msg.task.ChatID == m.selectedChatID {
 				m.liveMessages = append(m.liveMessages, msg.sentMsg)
@@ -1264,6 +1380,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.statusText = "Send failed"
 			m.addTrace(fmt.Sprintf("Failed to send message: %v", msg.err))
 			return m, waitForUIEvent(m.uiEventCh)
+		}
+		if msg.msg.MessageID > 0 {
+			m.sentMsgIDs[msg.msg.MessageID] = true
+			if cfg, ok := m.chatAIConfigs[msg.chatID]; ok {
+				if msg.msg.MessageID > cfg.LastAutoRepliedMsgID {
+					cfg.LastAutoRepliedMsgID = msg.msg.MessageID
+					m.chatAIConfigs[msg.chatID] = cfg
+					_ = storage.SaveChatAIConfigs(m.cfg.DataDir, m.chatAIConfigs)
+				}
+			}
 		}
 		if msg.chatID == m.selectedChatID {
 			m.liveMessages = append(m.liveMessages, msg.msg)
@@ -1470,4 +1596,20 @@ func (m *Model) SetSkillPreviewModalForCapture(skillIdx int) {
 	}
 	m.previewScroll = 0
 	m.activeModal = modalSkillPreview
+}
+
+func isPureConfirmation(s string) bool {
+	lower := strings.ToLower(strings.TrimSpace(s))
+	prefixes := []string{
+		"понял", "договорились", "хорошо", "буду отправлять", "буду напоминать", "отправка", "серия",
+		"привет! серия", "привет! цикл", "пятиминутный цикл", "все 5 сообщений", "все 5 приветствий",
+		"цикл отправки", "таймер остановлен", "останавливаю отправку",
+		"i will", "understood", "sure", "alright", "got it", "i'll remind", "i'll send",
+	}
+	for _, p := range prefixes {
+		if strings.HasPrefix(lower, p) {
+			return true
+		}
+	}
+	return false
 }

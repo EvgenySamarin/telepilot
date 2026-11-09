@@ -275,8 +275,12 @@ func (s *Service) FetchRecentMessages(ctx context.Context, chat storage.ChatInfo
 		}
 
 		userMap := make(map[int64]string)
+		selfUserIDs := make(map[int64]bool)
 		for _, u := range users {
 			if usr, ok := u.(*tg.User); ok {
+				if usr.Self {
+					selfUserIDs[usr.ID] = true
+				}
 				name := strings.TrimSpace(usr.FirstName + " " + usr.LastName)
 				if usr.Username != "" {
 					name = fmt.Sprintf("%s (@%s)", name, usr.Username)
@@ -292,10 +296,14 @@ func (s *Service) FetchRecentMessages(ctx context.Context, chat storage.ChatInfo
 			}
 			msgTime := time.Unix(int64(msg.Date), 0).Local()
 			sender := chat.Title
+			isOutgoing := msg.Out
 			if msg.Out {
 				sender = "You"
 			} else if fromUser, ok := msg.FromID.(*tg.PeerUser); ok {
-				if name, exists := userMap[fromUser.UserID]; exists && name != "" {
+				if selfUserIDs[fromUser.UserID] {
+					sender = "You"
+					isOutgoing = true
+				} else if name, exists := userMap[fromUser.UserID]; exists && name != "" {
 					sender = name
 				} else {
 					sender = fmt.Sprintf("User %d", fromUser.UserID)
@@ -315,7 +323,7 @@ func (s *Service) FetchRecentMessages(ctx context.Context, chat storage.ChatInfo
 				MessageID:     msg.ID,
 				ChatID:        chat.ChatID,
 				Sender:        sender,
-				IsOutgoing:    msg.Out,
+				IsOutgoing:    isOutgoing,
 				Timestamp:     msgTime.Format("2006-01-02 15:04"),
 				Text:          msg.Message,
 				MediaType:     mType,
@@ -533,16 +541,22 @@ func (s *Service) StartLiveStream(ctx context.Context, onNewMessage func(chatID 
 				sender = strings.TrimSpace(u.FirstName + " " + u.LastName)
 			}
 		}
+		isOutgoing := m.Out
 		if m.Out {
 			sender = "You"
 		} else if fromUser, ok := m.FromID.(*tg.PeerUser); ok {
 			if u, exists := e.Users[fromUser.UserID]; exists && u != nil {
-				name := strings.TrimSpace(u.FirstName + " " + u.LastName)
-				if u.Username != "" {
-					name = fmt.Sprintf("%s (@%s)", name, u.Username)
-				}
-				if name != "" {
-					sender = name
+				if u.Self {
+					sender = "You"
+					isOutgoing = true
+				} else {
+					name := strings.TrimSpace(u.FirstName + " " + u.LastName)
+					if u.Username != "" {
+						name = fmt.Sprintf("%s (@%s)", name, u.Username)
+					}
+					if name != "" {
+						sender = name
+					}
 				}
 			}
 		}
@@ -553,7 +567,7 @@ func (s *Service) StartLiveStream(ctx context.Context, onNewMessage func(chatID 
 			MessageID:     m.ID,
 			ChatID:        peerChatID,
 			Sender:        sender,
-			IsOutgoing:    m.Out,
+			IsOutgoing:    isOutgoing,
 			Timestamp:     msgTime.Format("2006-01-02 15:04"),
 			Text:          m.Message,
 			MediaType:     mType,

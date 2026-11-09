@@ -124,6 +124,27 @@ func TestExtractScheduleDirective(t *testing.T) {
 			t.Errorf("expected DueAt tomorrow at 09:00 (%v), got %v", expectedDue, directive.DueAt)
 		}
 	})
+
+	t.Run("Extract repeat task with count and until stopping conditions", func(t *testing.T) {
+		raw := "<schedule in=\"1m\" repeat=\"1m\" count=\"5\" until=\"5m\">Send hello</schedule>"
+		clean, directive, found := ExtractScheduleDirective(raw, now)
+		if !found || directive == nil {
+			t.Fatalf("expected schedule directive to be found")
+		}
+		if directive.MaxRuns != 5 {
+			t.Errorf("expected MaxRuns=5, got %d", directive.MaxRuns)
+		}
+		if directive.Until == nil {
+			t.Fatalf("expected Until timestamp not nil")
+		}
+		expectedUntil := now.Add(5 * time.Minute)
+		if !directive.Until.Equal(expectedUntil) {
+			t.Errorf("expected Until=%v, got %v", expectedUntil, *directive.Until)
+		}
+		if clean != "" {
+			t.Errorf("expected empty clean text when raw only had schedule tag, got %q", clean)
+		}
+	})
 }
 
 

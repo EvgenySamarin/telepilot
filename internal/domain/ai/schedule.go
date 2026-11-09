@@ -13,6 +13,8 @@ type ScheduleDirective struct {
 	InStr      string        `json:"in,omitempty"`
 	AtStr      string        `json:"at,omitempty"`
 	RepeatStr  string        `json:"repeat,omitempty"`
+	MaxRuns    int           `json:"max_runs,omitempty"`
+	Until      *time.Time    `json:"until,omitempty"`
 	TaskPrompt string        `json:"task_prompt"`
 	DueAt      time.Time     `json:"due_at"`
 	Interval   time.Duration `json:"interval,omitempty"`
@@ -22,6 +24,8 @@ var scheduleTagRegex = regexp.MustCompile(`(?is)<\s*schedule\s+([^>]+)>(.*?)<\s*
 var attrInRegex = regexp.MustCompile(`(?i)\bin\s*=\s*["']?([^"'\s>]+)["']?`)
 var attrAtRegex = regexp.MustCompile(`(?i)\bat\s*=\s*["']?([^"'\s>]+)["']?`)
 var attrRepeatRegex = regexp.MustCompile(`(?i)\brepeat\s*=\s*["']?([^"'\s>]+)["']?`)
+var attrCountRegex = regexp.MustCompile(`(?i)\b(?:count|max|times)\s*=\s*["']?(\d+)["']?`)
+var attrUntilRegex = regexp.MustCompile(`(?i)\buntil\s*=\s*["']?([^"'\s>]+)["']?`)
 
 // ParseScheduleDuration parses user- and agent-friendly duration strings:
 // e.g. "30s", "15m", "2h", "1d", "3d", "hourly", "daily", "weekly".
@@ -129,6 +133,22 @@ func ExtractScheduleDirective(rawText string, now time.Time) (string, *ScheduleD
 		repeatDur, _ = ParseScheduleDuration(repeatStr)
 	}
 
+	var maxRuns int
+	if countMatch := attrCountRegex.FindStringSubmatch(attrsStr); len(countMatch) >= 2 {
+		maxRuns, _ = strconv.Atoi(countMatch[1])
+	}
+
+	var untilTime *time.Time
+	if untilMatch := attrUntilRegex.FindStringSubmatch(attrsStr); len(untilMatch) >= 2 {
+		uStr := strings.TrimSpace(untilMatch[1])
+		if uDur, err := ParseScheduleDuration(uStr); err == nil && uDur > 0 {
+			t := now.Add(uDur)
+			untilTime = &t
+		} else if parsedAt, err := ParseScheduleWallClock(uStr, now); err == nil {
+			untilTime = &parsedAt
+		}
+	}
+
 	var dueAt time.Time
 	if atStr != "" {
 		if parsedAt, err := ParseScheduleWallClock(atStr, now); err == nil {
@@ -151,6 +171,8 @@ func ExtractScheduleDirective(rawText string, now time.Time) (string, *ScheduleD
 		InStr:      inStr,
 		AtStr:      atStr,
 		RepeatStr:  repeatStr,
+		MaxRuns:    maxRuns,
+		Until:      untilTime,
 		TaskPrompt: taskPrompt,
 		DueAt:      dueAt,
 		Interval:   repeatDur,

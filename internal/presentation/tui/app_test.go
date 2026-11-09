@@ -1674,12 +1674,9 @@ func TestScheduledTasksLifecycle(t *testing.T) {
 	})
 	m = mUpdated.(*Model)
 
-	// Cleaned text in draft compose box must NOT have <schedule> tag
-	if strings.Contains(m.chatInputBuffer, "<schedule") {
-		t.Errorf("expected chatInputBuffer to be cleaned, got: %q", m.chatInputBuffer)
-	}
-	if !strings.Contains(m.chatInputBuffer, "Sure, I'll remind you in 30 minutes!") {
-		t.Errorf("expected original confirmation preserved in chatInputBuffer, got: %q", m.chatInputBuffer)
+	// Unprompted confirmation ("Sure, I will...") must be suppressed from chatInputBuffer
+	if m.chatInputBuffer != "" {
+		t.Errorf("expected chatInputBuffer to be empty (no unprompted confirmation sent to chat), got: %q", m.chatInputBuffer)
 	}
 
 	// Task must be recorded in m.scheduledTasks
@@ -1767,5 +1764,50 @@ func TestScheduledTasksLifecycle(t *testing.T) {
 	lastMsg := m.liveMessages[len(m.liveMessages)-1]
 	if lastMsg.MessageID != 99991 || lastMsg.Text != "Reminder: Check oven status" {
 		t.Errorf("unexpected last message appended: %+v", lastMsg)
+	}
+
+	// 6. Test MaxRuns stopping condition
+	limitedTask := storage.ScheduledTask{
+		ID:          "task_limited",
+		ChatID:      testChat.ChatID,
+		ChatTitle:   testChat.Title,
+		TaskPrompt:  "Counted hello",
+		DueAt:       time.Now().Add(-1 * time.Second),
+		IntervalStr: "1s",
+		MaxRuns:     2,
+		RunsCount:   0,
+	}
+	m.scheduledTasks = []storage.ScheduledTask{limitedTask}
+	// Run 1: RunsCount becomes 1, task rescheduled
+	_ = m.checkScheduledTasksCmd()
+	if len(m.scheduledTasks) != 1 || m.scheduledTasks[0].RunsCount != 1 {
+		t.Fatalf("expected task retained after run 1 with RunsCount=1, got %+v", m.scheduledTasks)
+	}
+	// Run 2: RunsCount reaches MaxRuns (2), task stopped and removed
+	m.scheduledTasks[0].DueAt = time.Now().Add(-1 * time.Second)
+	_ = m.checkScheduledTasksCmd()
+	if len(m.scheduledTasks) != 0 {
+		t.Errorf("expected task to be stopped and removed after reaching MaxRuns=2, got %+v", m.scheduledTasks)
+	}
+
+	// 7. Test cancelling scheduled tasks
+	m.scheduledTasks = []storage.ScheduledTask{
+		{ID: "t1", ChatID: testChat.ChatID, ChatTitle: testChat.Title, DueAt: time.Now().Add(1 * time.Hour)},
+		{ID: "t2", ChatID: 9999, ChatTitle: "Other Chat", DueAt: time.Now().Add(1 * time.Hour)},
+	}
+	stoppedChat := m.cancelScheduledTasksForChat(testChat.ChatID, testChat.Title)
+	if stoppedChat != 1 {
+		t.Errorf("expected 1 task stopped for testChat, got %d", stoppedChat)
+	}
+	if len(m.scheduledTasks) != 1 || m.scheduledTasks[0].ChatID != 9999 {
+		t.Errorf("expected only other chat task to remain, got %+v", m.scheduledTasks)
+	}
+
+	stoppedAll := m.cancelAllScheduledTasks()
+	if stoppedAll != 1 {
+		t.Errorf("expected 1 remaining task stopped by cancelAllScheduledTasks, got %d", stoppedAll)
+	}
+	if len(m.scheduledTasks) != 0 {
+		t.Errorf("expected 0 scheduled tasks after cancelAll, got %d", len(m.scheduledTasks))
 	}
 }

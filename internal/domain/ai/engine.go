@@ -167,12 +167,7 @@ func (e *Engine) GenerateChatReply(ctx context.Context, chatTitle string, recent
 	}
 	promptBuilder.WriteString("\nRecent conversation history:\n")
 	promptBuilder.WriteString(strings.Join(historyLines, "\n"))
-	promptBuilder.WriteString("\n\nScheduling capability:\n")
-	promptBuilder.WriteString("You have access to TelePilot's background scheduler. If the conversation or user asks to be reminded, repeat a task, or run something later/periodically, write a natural conversational reply to the user first, and append a schedule directive at the end:\n")
-	promptBuilder.WriteString("- For relative delay: <schedule in=\"<duration>\" repeat=\"<none|interval>\">exact task or reminder description</schedule>\n")
-	promptBuilder.WriteString("- For exact wall-clock time: <schedule at=\"<HH:MM>\" repeat=\"<none|daily|weekly>\">exact task or reminder description</schedule>\n")
-	promptBuilder.WriteString("Supported formats: 'in' (e.g. 30s, 15m, 2h, 1d), 'at' (e.g. 09:00, 18:30), 'repeat' (none, hourly, daily, weekly, or interval like 2h).\n")
-	promptBuilder.WriteString("Write ONLY the exact message text to send next as 'You'. Do not include quotes, sender prefixes, markdown code blocks, or explanations (except the optional <schedule> tag at the end).")
+	promptBuilder.WriteString("\n\nWrite ONLY the exact message text to send next as 'You'. Do not include quotes, sender prefixes, markdown code blocks, or explanations.")
 
 	res, err := e.callAgyCLI(ctx, promptBuilder.String(), "")
 	if err != nil {
@@ -225,9 +220,12 @@ func (e *Engine) PlanSingleShotInstruction(ctx context.Context, chatTitle string
 ]
 Rules:
 - "text" must be the exact message string to send to Telegram (no extra commentary).
-- "delay_seconds" is how many seconds to wait BEFORE sending that specific message (use 0 for immediate, or positive seconds if the user requested timed intervals such as "every 15 seconds" or "after 15 seconds").
-- If the user instruction asks to schedule a reminder or recurring task, append <schedule in="<duration>" repeat="<none|interval>">task description</schedule> or <schedule at="<HH:MM>" repeat="daily">task description</schedule> to the confirmation message text.
-- If the user asked for multiple messages (e.g. 3 messages), include one object per message in the JSON array.
+- NEVER send conversational confirmations like "Понял, буду отправлять...", "Привет! Цикл начат...", "Серия завершена" or "Отправляю..." into the chat.
+- If the instruction is to schedule future or repeating messages (e.g. "every minute for 5 minutes", "in 30 minutes", "every day at 9"):
+  Return EXACTLY ONE item containing ONLY the <schedule> directive and NO chat text, like:
+  [{"text": "<schedule in=\"1m\" repeat=\"1m\" count=\"5\" until=\"5m\">exact message or prompt to send</schedule>", "delay_seconds": 0}]
+  Attributes: in, at, repeat, count, until.
+  Do NOT include any extra items, delays, or confirmation messages.
 - Output ONLY the raw JSON array without markdown fences or explanations.`)
 
 	res, err := e.callAgyCLI(ctx, promptBuilder.String(), "")

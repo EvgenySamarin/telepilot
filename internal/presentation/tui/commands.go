@@ -439,16 +439,18 @@ func (m *Model) cancelSingleShotForChat(chatID int64, chatTitle string) bool {
 	r.history = nil
 	r.mu.Unlock()
 
+	schedCancelled := m.cancelScheduledTasksForChat(chatID, chatTitle)
+
 	if cfg, ok := m.chatAIConfigs[chatID]; ok && cfg.Notes != "" {
 		cfg.Notes = ""
 		m.chatAIConfigs[chatID] = cfg
 		_ = storage.SaveChatAIConfigs(m.cfg.DataDir, m.chatAIConfigs)
 		m.syncCurrentChatAISettings()
 	}
-	if wasRunning || hadHistory {
-		m.addTrace(fmt.Sprintf("Cleared/stopped single-shot AI instruction for '%s'", chatTitle))
+	if wasRunning || hadHistory || schedCancelled > 0 {
+		m.addTrace(fmt.Sprintf("Cleared/stopped single-shot & scheduled tasks for '%s'", chatTitle))
 	}
-	return wasRunning || hadHistory
+	return wasRunning || hadHistory || schedCancelled > 0
 }
 
 // runSingleShotInstructionCmd executes a standalone AI instruction directly in the selected chat.
@@ -483,13 +485,7 @@ func (m *Model) runSingleShotInstructionCmd(instruction string, appendMode bool)
 		if runner.running {
 			runner.queue = append(runner.queue, instruction)
 			queuedCount := len(runner.queue)
-			combinedNotes := strings.Join(runner.history, " + ")
 			runner.mu.Unlock()
-			skillToUse := m.activeSkill
-			if cfg, ok := m.activeChatAIConfig(); ok && cfg.Skill != "" {
-				skillToUse = cfg.Skill
-			}
-			m.saveCurrentChatAIConfig(skillToUse, combinedNotes, m.periodSpec, true)
 			m.statusText = fmt.Sprintf("Appended (#%d in queue)", queuedCount)
 			m.addTrace(fmt.Sprintf("Appended instruction to active single-shot queue for '%s': %s", target.Title, instruction))
 			return nil
@@ -498,17 +494,10 @@ func (m *Model) runSingleShotInstructionCmd(instruction string, appendMode bool)
 		runner.queue = []string{combined}
 	}
 
-	persistedNotes := strings.Join(runner.history, " + ")
 	ctx, cancel := context.WithCancel(context.Background())
 	runner.cancel = cancel
 	runner.running = true
 	runner.mu.Unlock()
-
-	skillToUse := m.activeSkill
-	if cfg, ok := m.activeChatAIConfig(); ok && cfg.Skill != "" {
-		skillToUse = cfg.Skill
-	}
-	m.saveCurrentChatAIConfig(skillToUse, persistedNotes, m.periodSpec, true)
 
 	m.statusText = "AI Single-Shot..."
 	if appendMode {
@@ -584,14 +573,18 @@ func (m *Model) runSingleShotInstructionCmd(instruction string, appendMode bool)
 					return
 				default:
 				}
-				cleanText, directive, found := ai.ExtractScheduleDirective(act.Text, time.Now())
+				_, directive, found := ai.ExtractScheduleDirective(act.Text, time.Now())
 				if found && directive != nil {
 					m.uiEventCh <- scheduleDirectiveFoundMsg{
 						chatID:    target.ChatID,
 						chatTitle: target.Title,
 						directive: *directive,
 					}
-					act.Text = cleanText
+					// Background schedule registered: stop simulated loop and do not spam chat
+					break
+				}
+				if isPureConfirmation(act.Text) || strings.TrimSpace(act.Text) == "" {
+					continue
 				}
 				m.uiEventCh <- parseLogMsg(fmt.Sprintf("AI Single-Shot [%d/%d]: sending message...", idx+1, len(actions)))
 				sendCtx, sendCancel := context.WithTimeout(runCtx, 15*time.Second)
@@ -701,3 +694,23 @@ func (m *Model) runChatAICmd() tea.Cmd {
 
 	return nil
 }
+
+func copyToClipboard(text string) error {
+	if isMacOS() {
+		cmd := exec.Command("pbcopy")
+		cmd.Stdin = strings.NewReader(text)
+		return cmd.Run()
+	}
+	if _, err := exec.LookPath("xclip"); err == nil {
+		cmd := exec.Command("xclip", "-selection", "clipboard")
+		cmd.Stdin = strings.NewReader(text)
+		return cmd.Run()
+	}
+	if _, err := exec.LookPath("wl-copy"); err == nil {
+		cmd := exec.Command("wl-copy")
+		cmd.Stdin = strings.NewReader(text)
+		return cmd.Run()
+	}
+	return fmt.Errorf("no clipboard utility found")
+}
+

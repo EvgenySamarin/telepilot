@@ -564,6 +564,15 @@ func (m *Model) handleModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.resetDefaultSkills()
 			return m, nil
 
+		case "ctrl+x":
+			stopped := m.cancelAllScheduledTasks()
+			if stopped > 0 {
+				m.statusText = fmt.Sprintf("Stopped %d scheduled tasks", stopped)
+			} else {
+				m.statusText = "No scheduled tasks active"
+			}
+			return m, nil
+
 		case "enter":
 			// Drill into the selected block
 			m.cfgBoxEntered = true
@@ -696,14 +705,29 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.formFocus = 2
 		return m, m.startConnectionTestCmd()
 
-	case "c":
-		m.aiFormFields[0] = m.cfg.AgyCLIBin()
-		m.aiFormFields[1] = m.cfg.AgyModel
-		if strings.TrimSpace(m.aiFormFields[1]) == "" {
-			m.aiFormFields[1] = "auto"
+	case "c", "y":
+		if m.activeTab == 4 {
+			logPath := m.traceLogFilePath()
+			if data, err := os.ReadFile(logPath); err == nil && len(data) > 0 {
+				_ = copyToClipboard(string(data))
+				m.statusText = "Trace log copied to clipboard"
+				m.addTrace("Copied trace log to clipboard")
+			} else if len(m.traceLogs) > 0 {
+				_ = copyToClipboard(strings.Join(m.traceLogs, "\n"))
+				m.statusText = "Trace log copied to clipboard"
+				m.addTrace("Copied trace log to clipboard")
+			}
+			return m, nil
 		}
-		m.aiFormFocus = 0
-		m.activeModal = modalAIConfig
+		if msg.String() == "c" {
+			m.aiFormFields[0] = m.cfg.AgyCLIBin()
+			m.aiFormFields[1] = m.cfg.AgyModel
+			if strings.TrimSpace(m.aiFormFields[1]) == "" {
+				m.aiFormFields[1] = "auto"
+			}
+			m.aiFormFocus = 0
+			m.activeModal = modalAIConfig
+		}
 
 	case "C":
 		m.cfgBoxCursor = 0
@@ -998,6 +1022,35 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+	case "ctrl+l":
+		if m.activeTab == 4 {
+			m.traceLogs = nil
+			_ = os.WriteFile(m.traceLogFilePath(), []byte{}, 0o644)
+			m.statusText = "Trace log cleared"
+			m.addTrace("Trace logs cleared by user")
+			return m, nil
+		}
+
+	case "ctrl+x", "X":
+		if m.activeTab == 2 || m.activeTab == 4 {
+			stopped := m.cancelAllScheduledTasks()
+			if stopped > 0 {
+				m.statusText = fmt.Sprintf("Stopped %d scheduled tasks", stopped)
+			} else {
+				m.statusText = "No scheduled tasks active"
+			}
+			return m, nil
+		}
+		if ch := m.activeChat(); ch != nil {
+			stopped := m.cancelScheduledTasksForChat(ch.ChatID, ch.Title)
+			if stopped > 0 {
+				m.statusText = fmt.Sprintf("Stopped %d scheduled tasks for '%s'", stopped, ch.Title)
+			} else {
+				m.statusText = "No scheduled tasks for this chat"
+			}
+			return m, nil
+		}
+
 	case " ":
 		if m.focus == focusChats {
 			return m, m.selectChatAtIndex(m.chatCursor)
@@ -1193,6 +1246,16 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.statusText = "Opened in Finder"
 				m.addTrace("Revealed skill output in Finder: " + rec.OutputPath)
 			}
+			return m, nil
+		}
+		if m.activeTab == 4 {
+			logPath := m.traceLogFilePath()
+			if isMacOS() {
+				_ = exec.Command("open", "-R", logPath).Start()
+			}
+			m.statusText = "Revealed trace.log in Finder"
+			m.addTrace("Revealed trace log in Finder: " + logPath)
+			return m, nil
 		}
 
 	case "v":
@@ -1231,6 +1294,11 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				_ = openFileInViewer(rec.OutputPath)
 				m.addTrace("Opened skill output in viewer: " + rec.OutputPath)
 			}
+		case 4:
+			logPath := m.traceLogFilePath()
+			_ = openFileInViewer(logPath)
+			m.statusText = "Opened trace.log in viewer"
+			m.addTrace("Opened trace log in viewer: " + logPath)
 		}
 	}
 
