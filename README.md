@@ -139,6 +139,8 @@ internal/
 └── tui/                     # Bubble Tea Model, views, modals, key handlers & tests
 ```
 
+See [docs/README.md](docs/README.md) for full generated Go API documentation.
+
 ---
 
 ## 🚀 Quick Start
