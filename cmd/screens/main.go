@@ -19,12 +19,12 @@ import (
 	"github.com/charmbracelet/x/cellbuf"
 	"github.com/muesli/termenv"
 
-	"telepilot/internal/domain/ai"
-	"telepilot/internal/domain/config"
-	"telepilot/internal/domain/skills"
-	"telepilot/internal/domain/storage"
-	"telepilot/internal/network/mtproto"
-	"telepilot/internal/presentation/tui"
+	"telepilot/internal/ai"
+	"telepilot/internal/config"
+	"telepilot/internal/skills"
+	"telepilot/internal/storage"
+	"telepilot/internal/mtproto"
+	"telepilot/internal/tui"
 )
 
 func hexColor(c ansi.Color, defaultHex string) string {
