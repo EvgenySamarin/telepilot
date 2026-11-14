@@ -79,3 +79,30 @@ func TestSaveChatSkillOutputsUsesRunDateInFilename(t *testing.T) {
 		t.Fatalf("expected second output file %q to exist: %v", secondPath, err)
 	}
 }
+
+func TestSaveChatSkillOutputsCustomOutputDir(t *testing.T) {
+	dir := t.TempDir()
+	customDir := filepath.Join(t.TempDir(), "automation", "anna")
+	chatID := int64(202)
+
+	outputs := map[int64]SkillOutputRecord{
+		chatID: {
+			ChatID:    chatID,
+			ChatTitle: "Anna Kovaleva",
+			Skill:     "rental-statement-consolidator",
+			CreatedAt: "2026-11-14 22:00:00 UTC",
+			Output:    "custom folder output",
+			OutputDir: customDir,
+		},
+	}
+	if err := SaveChatSkillOutputs(dir, outputs); err != nil {
+		t.Fatalf("SaveChatSkillOutputs with custom OutputDir failed: %v", err)
+	}
+	wantPath := filepath.Join(customDir, "20261114-output.md")
+	if outputs[chatID].OutputPath != wantPath {
+		t.Fatalf("expected OutputPath %q, got %q", wantPath, outputs[chatID].OutputPath)
+	}
+	if _, err := os.Stat(wantPath); err != nil {
+		t.Fatalf("expected custom output file %q to exist: %v", wantPath, err)
+	}
+}

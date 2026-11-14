@@ -194,6 +194,19 @@ func (m *Model) renderRePromptTab(rec *storage.SkillOutputRecord, innerW int) []
 	if chatAIEnabled {
 		chatAICol = colPurple
 		chatAIBody = m.T("skills_chat_enabled", chatCfg.Skill, autoReplyLabel, sendModeLabel, runNotesText)
+		outDirDisplay := strings.TrimSpace(chatCfg.OutputDir)
+		if outDirDisplay == "" {
+			if m.cfg.IsRussian() {
+				outDirDisplay = "по умолчанию (data/outputs/<чат>/)"
+			} else {
+				outDirDisplay = "default (data/outputs/<chat>/)"
+			}
+		}
+		if m.cfg.IsRussian() {
+			chatAIBody += fmt.Sprintf("\nПапка отчётов:\n    %s (нажмите 'F')", outDirDisplay)
+		} else {
+			chatAIBody += fmt.Sprintf("\nOutput Folder:\n    %s (press 'F')", outDirDisplay)
+		}
 	} else {
 		chatAICol = colYellow
 		chatAIBody = m.T("skills_chat_disabled", config.DefaultSkillName)

@@ -36,6 +36,7 @@ const (
 	modalSkillPreview
 	modalGlobalConfig
 	modalHistoryLoad
+	modalChatOutputDir
 )
 
 // Bubble Tea Messages
@@ -51,6 +52,12 @@ type skillEditedMsg struct {
 // skillImportedMsg is sent when the native macOS skill import picker finishes.
 type skillImportedMsg struct {
 	imported []skills.Skill
+	canceled bool
+	err      error
+}
+
+type outputDirPickedMsg struct {
+	path     string
 	canceled bool
 	err      error
 }

@@ -201,6 +201,7 @@ func highlightBox1EnteredOption(body string, optIdx int) string {
 		1: 5,
 		2: 6,
 		3: 8,
+		4: 10,
 	}
 	targetLine, ok := targetLineMap[optIdx]
 	if !ok {

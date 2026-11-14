@@ -272,3 +272,26 @@ func TestSkillsLibrarySingleLineAndActiveMarquee(t *testing.T) {
 			b3End-b3Start, strings.Join(lines0[b3Start:b3End], "\n"))
 	}
 }
+
+func TestPerChatOutputFolderModalAndPersistence(t *testing.T) {
+	m := newHistoryTestModel(t)
+	m.activeTab = 2
+	m.focus = focusMain
+	ch := m.activeChat()
+	customDir := t.TempDir()
+
+	// Press 'F' to open the per-chat output folder modal
+	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'F'}})
+	if m.activeModal != modalChatOutputDir {
+		t.Fatalf("expected modalChatOutputDir, got %v", m.activeModal)
+	}
+
+	m.inputBuffer = customDir
+	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if m.activeModal != modalNone {
+		t.Fatalf("expected modalNone after enter, got %v", m.activeModal)
+	}
+	if got := m.chatAIConfigs[ch.ChatID].OutputDir; got != customDir {
+		t.Fatalf("expected OutputDir=%q, got %q", customDir, got)
+	}
+}

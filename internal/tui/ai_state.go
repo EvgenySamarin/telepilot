@@ -111,12 +111,46 @@ func (m *Model) saveCurrentChatAIConfig(skillName, notes, periodSpec string, ena
 		PeriodSpec:           strings.TrimSpace(periodSpec),
 		AutoReply:            prev.AutoReply,
 		SendMode:             sendMode,
+		OutputDir:            prev.OutputDir,
 		LastAutoRepliedMsgID: prev.LastAutoRepliedMsgID,
 		UpdatedAt:            time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
 	}
 	m.chatAIConfigs[ch.ChatID] = cfg
 	_ = storage.SaveChatAIConfigs(m.cfg.DataDir, m.chatAIConfigs)
 	m.syncCurrentChatAISettings()
+}
+
+func (m *Model) setChatOutputDir(dir string) {
+	ch := m.activeChat()
+	if ch == nil {
+		return
+	}
+	if m.chatAIConfigs == nil {
+		m.chatAIConfigs = make(map[int64]storage.ChatAIConfig)
+	}
+	cleaned := strings.TrimSpace(dir)
+	cfg, exists := m.chatAIConfigs[ch.ChatID]
+	if !exists {
+		cfg = storage.ChatAIConfig{
+			ChatID:     ch.ChatID,
+			ChatTitle:  ch.Title,
+			Enabled:    true,
+			Skill:      config.DefaultSkillName,
+			PeriodSpec: "1m",
+			SendMode:   "draft",
+		}
+	}
+	cfg.OutputDir = cleaned
+	cfg.UpdatedAt = time.Now().UTC().Format("2006-01-02 15:04:05 UTC")
+	m.chatAIConfigs[ch.ChatID] = cfg
+	_ = storage.SaveChatAIConfigs(m.cfg.DataDir, m.chatAIConfigs)
+	if cleaned == "" {
+		m.statusText = "Reset AI output folder to default"
+		m.addTrace(fmt.Sprintf("Reset AI output folder to default for '%s'", ch.Title))
+	} else {
+		m.statusText = fmt.Sprintf("AI output folder set: %s", cleaned)
+		m.addTrace(fmt.Sprintf("Set AI output folder for '%s' to %s", ch.Title, cleaned))
+	}
 }
 
 func (m *Model) toggleChatAutoReply() {

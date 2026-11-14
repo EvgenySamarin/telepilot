@@ -902,6 +902,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.skillOutputs == nil {
 				m.skillOutputs = make(map[int64]storage.SkillOutputRecord)
 			}
+			if cfg, ok := m.chatAIConfigs[msg.record.ChatID]; ok && strings.TrimSpace(cfg.OutputDir) != "" {
+				msg.record.OutputDir = strings.TrimSpace(cfg.OutputDir)
+			}
 			m.skillOutputs[msg.record.ChatID] = *msg.record
 			_ = storage.SaveChatSkillOutputs(m.cfg.DataDir, m.skillOutputs)
 			if saved, ok := m.skillOutputs[msg.record.ChatID]; ok {
@@ -913,6 +916,19 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.addTrace(fmt.Sprintf("Completed AI skill '%s' for '%s' -> switched to Tab 3 (AI Output).", msg.record.Skill, msg.record.ChatTitle))
 		}
 		return m, waitForUIEvent(m.uiEventCh)
+
+	case outputDirPickedMsg:
+		if msg.canceled {
+			m.statusText = "Folder selection cancelled"
+		} else if msg.err != nil {
+			m.statusText = "Folder picker error"
+			m.addTrace(fmt.Sprintf("Output folder picker error: %v", msg.err))
+		} else if strings.TrimSpace(msg.path) != "" {
+			m.inputBuffer = msg.path
+			m.activeModal = modalNone
+			m.setChatOutputDir(msg.path)
+		}
+		return m, nil
 
 	case tea.KeyMsg:
 		if m.activeModal != modalNone {

@@ -253,6 +253,34 @@ func (m *Model) handleModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case modalChatOutputDir:
+		switch key {
+		case "esc":
+			m.inputBuffer = ""
+			m.activeModal = modalNone
+		case "enter":
+			dir := strings.TrimSpace(m.inputBuffer)
+			m.inputBuffer = ""
+			m.activeModal = modalNone
+			m.setChatOutputDir(dir)
+		case "ctrl+f":
+			return m, m.pickChatOutputDirFromFinderCmd()
+		case "ctrl+u":
+			m.inputBuffer = ""
+		case "backspace":
+			if len(m.inputBuffer) > 0 {
+				_, sz := utf8.DecodeLastRuneInString(m.inputBuffer)
+				m.inputBuffer = m.inputBuffer[:len(m.inputBuffer)-sz]
+			}
+		default:
+			if utf8.RuneCountInString(key) == 1 {
+				m.inputBuffer += key
+			} else if key == "space" {
+				m.inputBuffer += " "
+			}
+		}
+		return m, nil
+
 	case modalNewSkill:
 		switch key {
 		case "esc":
@@ -843,6 +871,17 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+	case "F":
+		if m.activeChat() != nil && (m.activeTab == 2 || m.activeTab == 3) {
+			if cfg, ok := m.activeChatAIConfig(); ok {
+				m.inputBuffer = cfg.OutputDir
+			} else {
+				m.inputBuffer = ""
+			}
+			m.activeModal = modalChatOutputDir
+			return m, nil
+		}
+
 	case "?":
 		m.activeModal = modalHelp
 
@@ -915,7 +954,7 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.marqueeTick = 0
 					m.scrollTab2ToBox(3)
 				} else if m.tab2BoxCursor == 1 {
-					m.tab2ChatOptCursor = 3
+					m.tab2ChatOptCursor = 4
 				}
 			default:
 				m.mainScroll += 1000
@@ -1022,7 +1061,7 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					}
 					m.scrollTab2ToBox(m.tab2BoxCursor)
 				} else if m.tab2BoxCursor == 1 {
-					if m.tab2ChatOptCursor < 3 {
+					if m.tab2ChatOptCursor < 4 {
 						m.tab2ChatOptCursor++
 					}
 				} else if m.tab2BoxCursor == 3 {
@@ -1199,6 +1238,13 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				case 3:
 					m.activeModal = modalPrompt
 					m.inputBuffer = ""
+				case 4:
+					if cfg, ok := m.activeChatAIConfig(); ok {
+						m.inputBuffer = cfg.OutputDir
+					} else {
+						m.inputBuffer = ""
+					}
+					m.activeModal = modalChatOutputDir
 				}
 				return m, nil
 			}

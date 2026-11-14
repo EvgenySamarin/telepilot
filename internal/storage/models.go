@@ -126,6 +126,7 @@ type ChatAIConfig struct {
 	PeriodSpec           string `json:"period_spec"`
 	AutoReply            bool   `json:"auto_reply"` // when true, AI automatically replies to incoming messages in this chat
 	SendMode             string `json:"send_mode"`  // "draft" (confirm with Enter in compose box) or "auto_send" (send immediately)
+	OutputDir            string `json:"output_dir,omitempty"`
 	LastAutoRepliedMsgID int    `json:"last_auto_replied_msg_id,omitempty"`
 	UpdatedAt            string `json:"updated_at"`
 }
@@ -156,6 +157,7 @@ type SkillOutputRecord struct {
 	ModelUsed    string `json:"model_used"`
 	MessageCount int    `json:"message_count"`
 	Output       string `json:"output"`
+	OutputDir    string `json:"output_dir,omitempty"`
 	OutputPath   string `json:"output_path,omitempty"`
 	CreatedAt    string `json:"created_at"`
 }

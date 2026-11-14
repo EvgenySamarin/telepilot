@@ -250,7 +250,10 @@ func SaveChatSkillOutputs(dataDir string, outputs map[int64]SkillOutputRecord) e
 		mdPath := rec.OutputPath
 		if strings.TrimSpace(mdPath) == "" {
 			chatOutDir := filepath.Join(outputsDir, slug)
-			_ = os.MkdirAll(chatOutDir, 0o755)
+			if customDir := strings.TrimSpace(rec.OutputDir); customDir != "" {
+				chatOutDir = ExpandHomePath(customDir)
+			}
+			_ = os.MkdirAll(chatOutDir, 0o700)
 			mdPath = filepath.Join(chatOutDir, fmt.Sprintf("%s-output.md", dateSlug))
 			if _, statErr := os.Stat(mdPath); statErr == nil {
 				mdPath = filepath.Join(chatOutDir, fmt.Sprintf("%s-%s-output.md", dateSlug, timeSlug))
@@ -286,6 +289,22 @@ func skillOutputDateAndTimeSlug(createdAt string) (string, string) {
 	}
 	now := time.Now().Local()
 	return now.Format("20060102"), now.Format("150405")
+}
+
+// ExpandHomePath expands a leading "~/" to the current user's home directory.
+func ExpandHomePath(p string) string {
+	trimmed := strings.TrimSpace(p)
+	if trimmed == "~" {
+		if home, err := os.UserHomeDir(); err == nil {
+			return home
+		}
+	}
+	if strings.HasPrefix(trimmed, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, trimmed[2:])
+		}
+	}
+	return trimmed
 }
 
 /*

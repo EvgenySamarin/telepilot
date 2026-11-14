@@ -200,6 +200,33 @@ func (m *Model) importSkillFromMacPickerCmd() tea.Cmd {
 	}
 }
 
+func (m *Model) pickChatOutputDirFromFinderCmd() tea.Cmd {
+	if !isMacOS() {
+		m.statusText = "Finder folder picker is macOS-only; type path manually"
+		return nil
+	}
+	prompt := "Select a folder for this chat's AI output Markdown files:"
+	if m.cfg.IsRussian() {
+		prompt = "Выберите папку для сохранения Markdown-отчётов ИИ для этого чата:"
+	}
+	return func() tea.Msg {
+		script := fmt.Sprintf(`POSIX path of (choose folder with prompt %q)`, prompt)
+		out, err := exec.Command("osascript", "-e", script).CombinedOutput()
+		if err != nil {
+			outStr := strings.ToLower(string(out) + " " + err.Error())
+			if strings.Contains(outStr, "-128") || strings.Contains(outStr, "cancel") {
+				return outputDirPickedMsg{canceled: true}
+			}
+			return outputDirPickedMsg{err: fmt.Errorf("macOS Finder folder picker failed: %w (%s)", err, strings.TrimSpace(string(out)))}
+		}
+		chosen := strings.TrimSpace(string(out))
+		if chosen == "" {
+			return outputDirPickedMsg{canceled: true}
+		}
+		return outputDirPickedMsg{path: chosen}
+	}
+}
+
 func tickCmd() tea.Cmd {
 	return tea.Tick(220*time.Millisecond, func(t time.Time) tea.Msg {
 		return tickMsg(t)

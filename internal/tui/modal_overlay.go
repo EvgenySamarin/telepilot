@@ -40,6 +40,13 @@ func (m *Model) renderModalOverlay() string {
 			m.inputBuffer,
 			"Enter: Load/Jump (empty=100)  │  Esc: Cancel",
 		)
+	case modalChatOutputDir:
+		modalBox = m.renderInputModal(
+			"─AI Output Folder (Per Chat)─",
+			"Enter folder path (leave empty for default data/outputs/<chat>/):",
+			m.inputBuffer,
+			"Enter: Save  │  Ctrl+F: Finder Picker  │  Ctrl+U: Clear  │  Esc: Cancel",
+		)
 	}
 
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, modalBox)
