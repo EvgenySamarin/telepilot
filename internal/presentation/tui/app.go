@@ -143,10 +143,16 @@ type Model struct {
 	hiddenMu      sync.RWMutex
 }
 
+/*
+T translates a localization key into the active UI language with optional formatting arguments.
+*/
 func (m *Model) T(key string, args ...any) string {
 	return i18n.T(m.cfg.Language, key, args...)
 }
 
+/*
+NewModel initializes the TUI Model with loaded configs, skills, chats, and runtime state.
+*/
 func NewModel(cfg *config.AppConfig, aiEngine *ai.Engine, mtSvc *mtproto.Service, forceDemo bool) *Model {
 	rawChats := make([]storage.ChatInfo, len(storage.DemoChats))
 	copy(rawChats, storage.DemoChats)
@@ -282,6 +288,9 @@ func NewModel(cfg *config.AppConfig, aiEngine *ai.Engine, mtSvc *mtproto.Service
 	return m
 }
 
+/*
+Init starts the Bubble Tea background ticks, UI event listener, auth check, and live Telegram stream.
+*/
 func (m *Model) Init() tea.Cmd {
 	return tea.Batch(
 		tickCmd(),
@@ -292,6 +301,9 @@ func (m *Model) Init() tea.Cmd {
 	)
 }
 
+/*
+Update handles all incoming Bubble Tea messages, timers, async results, and keyboard events.
+*/
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -745,7 +757,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// SetQRModalForCapture sets the model state to show the QR modal for captures and previews.
+/*
+SetQRModalForCapture sets the model state to show the QR modal for captures and previews.
+*/
 func (m *Model) SetQRModalForCapture(status, qrArt, qrPNGPath string) {
 	m.activeModal = modalLoginQR
 	m.qrStatus = status
@@ -753,13 +767,17 @@ func (m *Model) SetQRModalForCapture(status, qrArt, qrPNGPath string) {
 	m.qrPNGPath = qrPNGPath
 }
 
-// SetGlobalConfigModalForCapture configures the model to display the Global Configuration modal.
+/*
+SetGlobalConfigModalForCapture configures the model to display the Global Configuration modal.
+*/
 func (m *Model) SetGlobalConfigModalForCapture(langIdx int) {
 	m.activeModal = modalGlobalConfig
 	m.cfgLangIndex = langIdx
 }
 
-// SetSkillPreviewModalForCapture configures the model to display the Skill Preview modal.
+/*
+SetSkillPreviewModalForCapture configures the model to display the Skill Preview modal.
+*/
 func (m *Model) SetSkillPreviewModalForCapture(skillIdx int) {
 	m.activeTab = 2
 	if skillIdx >= 0 && skillIdx < len(m.skillList) {

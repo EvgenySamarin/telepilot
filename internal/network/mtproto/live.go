@@ -22,7 +22,9 @@ import (
 	"telepilot/internal/domain/storage"
 )
 
-// ListDialogs fetches the user's top chats, groups, and channels.
+/*
+ListDialogs fetches the user's top chats, groups, and channels.
+*/
 func (s *Service) ListDialogs(ctx context.Context, limit int) ([]storage.ChatInfo, error) {
 	if limit <= 0 {
 		limit = 40
@@ -227,7 +229,9 @@ func extractLiveMediaMetadata(msg *tg.Message, msgTime time.Time) (mediaType, fi
 	return "", "", 0, 0
 }
 
-// FetchRecentMessages loads the last `limit` messages (default 50) for a chat in chronological order.
+/*
+FetchRecentMessages loads the last `limit` messages (default 50) for a chat in chronological order.
+*/
 func (s *Service) FetchRecentMessages(ctx context.Context, chat storage.ChatInfo, limit int) ([]storage.LiveMessage, error) {
 	if limit <= 0 {
 		limit = 50
@@ -351,7 +355,9 @@ func (s *Service) FetchRecentMessages(ctx context.Context, chat storage.ChatInfo
 	return result, nil
 }
 
-// SendMessage sends a text message to the specified chat and returns the resulting LiveMessage.
+/*
+SendMessage sends a text message to the specified chat and returns the resulting LiveMessage.
+*/
 func (s *Service) SendMessage(ctx context.Context, chat storage.ChatInfo, text string) (storage.LiveMessage, error) {
 	clean := strings.TrimSpace(text)
 	if clean == "" {
@@ -407,7 +413,9 @@ func (s *Service) SendMessage(ctx context.Context, chat storage.ChatInfo, text s
 	return outMsg, err
 }
 
-// DownloadMessageMedia downloads a message's media attachment on-demand into data/live_cache/<chat_id>/.
+/*
+DownloadMessageMedia downloads a message's media attachment on-demand into data/live_cache/<chat_id>/.
+*/
 func (s *Service) DownloadMessageMedia(ctx context.Context, chat storage.ChatInfo, msg storage.LiveMessage) (string, error) {
 	if msg.MediaType == "" {
 		return "", fmt.Errorf("message #%d has no media attachment", msg.MessageID)
@@ -514,7 +522,9 @@ func (s *Service) DownloadMessageMedia(ctx context.Context, chat storage.ChatInf
 	return targetPath, nil
 }
 
-// StartLiveStream runs a persistent gotd/td UpdateDispatcher to deliver incoming messages in real time.
+/*
+StartLiveStream runs a persistent gotd/td UpdateDispatcher to deliver incoming messages in real time.
+*/
 func (s *Service) StartLiveStream(ctx context.Context, onNewMessage func(chatID int64, msg storage.LiveMessage)) {
 	if !s.cfg.HasTelegramCredentials() {
 		return

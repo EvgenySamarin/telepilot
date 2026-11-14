@@ -32,6 +32,9 @@ func newTestModel(t *testing.T, lang string) *Model {
 	return m
 }
 
+/*
+AppConfigStub builds an isolated temporary AppConfig for TUI unit tests.
+*/
 func AppConfigStub(root, lang string) *config.AppConfig {
 	if lang == "" {
 		lang = "en"

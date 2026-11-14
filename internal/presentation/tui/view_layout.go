@@ -14,7 +14,9 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// View renders the entire responsive terminal layout.
+/*
+View renders the entire responsive terminal layout.
+*/
 func (m *Model) View() string {
 	if m.width < 60 || m.height < 18 {
 		return "Terminal window too small — please resize to at least 80x24."

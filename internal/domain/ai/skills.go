@@ -57,19 +57,25 @@ type SummaryResult struct {
 	SkillHash          string
 }
 
-// IsPending reports whether an AI text is a placeholder rather than a real result.
+/*
+IsPending reports whether an AI text is a placeholder rather than a real result.
+*/
 func IsPending(text string) bool {
 	s := strings.TrimSpace(text)
 	return s == "" || s == PendingText || strings.HasPrefix(s, "[Voice note ")
 }
 
-// Skills loads all skills from disk. It reads fresh every time so edits made in the
-// user's editor are picked up without restarting the app.
+/*
+Skills loads all skills from disk. It reads fresh every time so edits made in the
+user's editor are picked up without restarting the app.
+*/
 func (e *Engine) Skills() ([]skills.Skill, []error) {
 	return skills.Load(e.cfg.SkillsDir())
 }
 
-// MediaSkillFor returns the media skill that handles the given stored media item.
+/*
+MediaSkillFor returns the media skill that handles the given stored media item.
+*/
 func (e *Engine) MediaSkillFor(mediaType, filePath string) (skills.Skill, string) {
 	kind := skills.ClassifyMedia(mediaType, filePath)
 	list, _ := e.Skills()
@@ -79,8 +85,10 @@ func (e *Engine) MediaSkillFor(mediaType, filePath string) (skills.Skill, string
 	return builtinMediaSkill, kind
 }
 
-// SummarySkill resolves a summary skill by name, falling back to DEFAULT_SKILL,
-// then to the first summary skill on disk, then to a built-in one.
+/*
+SummarySkill resolves a summary skill by name, falling back to DEFAULT_SKILL,
+then to the first summary skill on disk, then to a built-in one.
+*/
 func (e *Engine) SummarySkill(name string) skills.Skill {
 	list, _ := e.Skills()
 	summaries := skills.Summaries(list)
@@ -105,8 +113,10 @@ var inlineTextExts = map[string]bool{
 	".txt": true, ".md": true, ".csv": true, ".json": true, ".log": true, ".yaml": true, ".yml": true,
 }
 
-// AnalyzeMedia analyzes any media file using the media skill routed by its kind.
-// When force is false, a valid cached voice transcript sidecar is reused.
+/*
+AnalyzeMedia analyzes any media file using the media skill routed by its kind.
+When force is false, a valid cached voice transcript sidecar is reused.
+*/
 func (e *Engine) AnalyzeMedia(ctx context.Context, mediaType, filePath, caption string, force bool) MediaResult {
 	sk, kind := e.MediaSkillFor(mediaType, filePath)
 	res := MediaResult{Text: PendingText, MediaKind: kind, Skill: sk.Name, SkillHash: sk.Hash}
@@ -162,8 +172,10 @@ func (e *Engine) AnalyzeMedia(ctx context.Context, mediaType, filePath, caption 
 	return res
 }
 
-// AnalyzeMediaItem re-analyzes a stored media item, skipping it when it was already
-// analyzed successfully by the exact same skill version (unless force is set).
+/*
+AnalyzeMediaItem re-analyzes a stored media item, skipping it when it was already
+analyzed successfully by the exact same skill version (unless force is set).
+*/
 func (e *Engine) AnalyzeMediaItem(ctx context.Context, it storage.MediaItemRecord, caption string, force bool) (MediaResult, bool) {
 	sk, kind := e.MediaSkillFor(it.MediaType, it.FilePath)
 	if !force && it.Skill == sk.Name && it.SkillHash == sk.Hash && !IsPending(it.AIText) {
@@ -172,8 +184,10 @@ func (e *Engine) AnalyzeMediaItem(ctx context.Context, it storage.MediaItemRecor
 	return e.AnalyzeMedia(ctx, it.MediaType, it.FilePath, caption, true), false
 }
 
-// GeneratePeriodSummary summarizes a period using the named summary skill plus optional notes.
-// The JSON output contract is enforced here, so skills only control the content.
+/*
+GeneratePeriodSummary summarizes a period using the named summary skill plus optional notes.
+The JSON output contract is enforced here, so skills only control the content.
+*/
 func (e *Engine) GeneratePeriodSummary(
 	ctx context.Context,
 	chatTitle string,
@@ -337,8 +351,10 @@ Messages and Transcribed Media:
 	return out
 }
 
-// ExecuteChatSkill runs the selected skill directly on the chat's messages without any rigid 4-card JSON schema,
-// returning the free-form AI output to display in Tab 3 (AI Output).
+/*
+ExecuteChatSkill runs the selected skill directly on the chat's messages without any rigid 4-card JSON schema,
+returning the free-form AI output to display in Tab 3 (AI Output).
+*/
 func (e *Engine) ExecuteChatSkill(
 	ctx context.Context,
 	chat storage.ChatInfo,

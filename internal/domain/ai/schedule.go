@@ -33,8 +33,10 @@ var attrRepeatRegex = regexp.MustCompile(`(?i)\brepeat\s*=\s*["']?([^"'\s>]+)["'
 var attrCountRegex = regexp.MustCompile(`(?i)\b(?:count|max|times)\s*=\s*["']?(\d+)["']?`)
 var attrUntilRegex = regexp.MustCompile(`(?i)\buntil\s*=\s*["']?([^"'\s>]+)["']?`)
 
-// ParseScheduleDuration parses user- and agent-friendly duration strings:
-// e.g. "30s", "15m", "2h", "1d", "3d", "hourly", "daily", "weekly".
+/*
+ParseScheduleDuration parses user- and agent-friendly duration strings:
+e.g. "30s", "15m", "2h", "1d", "3d", "hourly", "daily", "weekly".
+*/
 func ParseScheduleDuration(s string) (time.Duration, error) {
 	s = strings.TrimSpace(strings.ToLower(s))
 	if s == "" || s == "none" || s == "never" || s == "0" {
@@ -70,8 +72,10 @@ func ParseScheduleDuration(s string) (time.Duration, error) {
 	return time.ParseDuration(s)
 }
 
-// ParseScheduleWallClock parses wall-clock time strings (e.g. "09:00", "9:00", "14:30")
-// and returns the target time. If the time has already passed today, it targets tomorrow.
+/*
+ParseScheduleWallClock parses wall-clock time strings (e.g. "09:00", "9:00", "14:30")
+and returns the target time. If the time has already passed today, it targets tomorrow.
+*/
 func ParseScheduleWallClock(atStr string, now time.Time) (time.Time, error) {
 	atStr = strings.TrimSpace(atStr)
 	parts := strings.Split(atStr, ":")
@@ -104,9 +108,11 @@ func ParseScheduleWallClock(atStr string, now time.Time) (time.Time, error) {
 	return target, nil
 }
 
-// ExtractScheduleDirective inspects the raw text produced by an AI agent for a <schedule> tag.
-// If found, it parses the delay, interval, and inner task prompt, and returns clean text
-// (with the schedule tag stripped) ready for user display or chat delivery.
+/*
+ExtractScheduleDirective inspects the raw text produced by an AI agent for a <schedule> tag.
+If found, it parses the delay, interval, and inner task prompt, and returns clean text
+(with the schedule tag stripped) ready for user display or chat delivery.
+*/
 func ExtractScheduleDirective(rawText string, now time.Time) (string, *ScheduleDirective, bool) {
 	match := scheduleTagRegex.FindStringSubmatch(rawText)
 	if len(match) < 3 {

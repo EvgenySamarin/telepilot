@@ -35,6 +35,9 @@ func hexColor(c ansi.Color, defaultHex string) string {
 	return fmt.Sprintf("#%02x%02x%02x", r>>8, g>>8, b>>8)
 }
 
+/*
+RenderTerminalSVG converts an ANSI-styled terminal view string into a self-contained SVG terminal screenshot.
+*/
 func RenderTerminalSVG(viewStr string, widthCols, heightRows int, title string) string {
 	buf := cellbuf.NewBuffer(widthCols, heightRows)
 	cellbuf.SetContent(buf, viewStr)

@@ -24,6 +24,9 @@ type Engine struct {
 	cfg *config.AppConfig
 }
 
+/*
+NewEngine constructs an AI Engine configured with the given AppConfig.
+*/
 func NewEngine(cfg *config.AppConfig) *Engine {
 	return &Engine{cfg: cfg}
 }
@@ -81,6 +84,9 @@ func (e *Engine) callAgyCLI(ctx context.Context, prompt string, mediaPath string
 	return text, nil
 }
 
+/*
+TestConnection verifies that the agy CLI binary is available and responds to a minimal health prompt.
+*/
 func (e *Engine) TestConnection(ctx context.Context) (bool, string) {
 	t0 := time.Now()
 	bin := e.cfg.AgyCLIBin()
@@ -129,8 +135,10 @@ func formatMediaAccounting(items []storage.MediaItemRecord, lang string) string 
 	return strings.Join(lines, "\n")
 }
 
-// GenerateChatReply generates a conversational reply for a live Telegram chat using recent messages,
-// the chat's assigned skill, and per-chat custom AI instructions.
+/*
+GenerateChatReply generates a conversational reply for a live Telegram chat using recent messages,
+the chat's assigned skill, and per-chat custom AI instructions.
+*/
 func (e *Engine) GenerateChatReply(ctx context.Context, chatTitle string, recent []storage.LiveMessage, skillName string, customNotes string) (string, error) {
 	if len(recent) > 15 {
 		recent = recent[len(recent)-15:]
@@ -191,8 +199,10 @@ type SingleShotAction struct {
 	DelaySeconds int    `json:"delay_seconds"`
 }
 
-// PlanSingleShotInstruction executes a one-off, standalone AI instruction for the selected chat
-// (unrelated to summarization or skills) and returns one or more messages (with optional delays) to send.
+/*
+PlanSingleShotInstruction executes a one-off, standalone AI instruction for the selected chat
+(unrelated to summarization or skills) and returns one or more messages (with optional delays) to send.
+*/
 func (e *Engine) PlanSingleShotInstruction(ctx context.Context, chatTitle string, recent []storage.LiveMessage, instruction string) ([]SingleShotAction, error) {
 	if len(recent) > 15 {
 		recent = recent[len(recent)-15:]
@@ -282,8 +292,10 @@ func parseSingleShotActions(raw string) []SingleShotAction {
 	return []SingleShotAction{{Text: clean, DelaySeconds: 0}}
 }
 
-// GenerateScheduledTaskMessage generates a context-aware message to send to a Telegram chat
-// when a background scheduled task or reminder is triggered.
+/*
+GenerateScheduledTaskMessage generates a context-aware message to send to a Telegram chat
+when a background scheduled task or reminder is triggered.
+*/
 func (e *Engine) GenerateScheduledTaskMessage(ctx context.Context, chatTitle string, recent []storage.LiveMessage, taskPrompt string) (string, error) {
 	if len(recent) > 10 {
 		recent = recent[len(recent)-10:]

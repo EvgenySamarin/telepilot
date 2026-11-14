@@ -19,7 +19,9 @@ import (
 	qrcode "github.com/skip2/go-qrcode"
 )
 
-// CheckAuthorized checks whether the local session is already logged in.
+/*
+CheckAuthorized checks whether the local session is already logged in.
+*/
 func (s *Service) CheckAuthorized(ctx context.Context) (bool, string) {
 	if !s.cfg.HasTelegramCredentials() {
 		return false, ""
@@ -49,8 +51,10 @@ func (s *Service) CheckAuthorized(ctx context.Context) (bool, string) {
 	return authorized, userLabel
 }
 
-// RenderQRHalfBlocks renders a URL into compact Unicode half-block lines (2 vertical modules per row)
-// and also writes a crisp PNG to pngPath for macOS QuickLook preview.
+/*
+RenderQRHalfBlocks renders a URL into compact Unicode half-block lines (2 vertical modules per row)
+and also writes a crisp PNG to pngPath for macOS QuickLook preview.
+*/
 func RenderQRHalfBlocks(url string, pngPath string) (string, error) {
 	qr, err := qrcode.New(url, qrcode.Low)
 	if err != nil {
@@ -109,7 +113,9 @@ func RenderQRHalfBlocks(url string, pngPath string) (string, error) {
 	return sb.String(), nil
 }
 
-// RunQRLogin performs the Telegram Phone QR Code login flow using AuthExportLoginToken.
+/*
+RunQRLogin performs the Telegram Phone QR Code login flow using AuthExportLoginToken.
+*/
 func (s *Service) RunQRLogin(
 	ctx context.Context,
 	onQR func(qrArt string, loginURL string, pngPath string),

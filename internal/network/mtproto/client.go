@@ -29,6 +29,9 @@ type Service struct {
 	ai  *ai.Engine
 }
 
+/*
+NewService creates a new MTProto Service bound to the given AppConfig and AI Engine.
+*/
 func NewService(cfg *config.AppConfig, aiEngine *ai.Engine) *Service {
 	return &Service{
 		cfg: cfg,
@@ -92,7 +95,9 @@ func (s *Service) newClient(updateHandler telegram.UpdateHandler) *telegram.Clie
 	)
 }
 
-// TestConnection runs the 3-step live diagnostic against the configured MTProto server.
+/*
+TestConnection runs the 3-step live diagnostic against the configured MTProto server.
+*/
 func (s *Service) TestConnection(ctx context.Context, onUpdate func(lines []string)) (bool, []string) {
 	var lines []string
 	emit := func(line string) {

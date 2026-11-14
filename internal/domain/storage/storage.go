@@ -17,22 +17,37 @@ import (
 	"telepilot/internal/domain/config"
 )
 
+/*
+ChatAIConfigFilePath returns the JSON file path for per-chat AI configuration.
+*/
 func ChatAIConfigFilePath(dataDir string) string {
 	return filepath.Join(dataDir, "chat_ai_config.json")
 }
 
+/*
+FavoriteChatsFilePath returns the JSON file path for pinned favourite chats.
+*/
 func FavoriteChatsFilePath(dataDir string) string {
 	return filepath.Join(dataDir, "favorite_chats.json")
 }
 
+/*
+HiddenChatsFilePath returns the JSON file path for hidden chats.
+*/
 func HiddenChatsFilePath(dataDir string) string {
 	return filepath.Join(dataDir, "hidden_chats.json")
 }
 
+/*
+ScheduledTasksFilePath returns the JSON file path for persisted scheduled tasks.
+*/
 func ScheduledTasksFilePath(dataDir string) string {
 	return filepath.Join(dataDir, "scheduled_tasks.json")
 }
 
+/*
+LoadScheduledTasks reads persisted scheduled tasks from disk, returning an empty slice if none exist.
+*/
 func LoadScheduledTasks(dataDir string) []ScheduledTask {
 	path := ScheduledTasksFilePath(dataDir)
 	data, err := os.ReadFile(path)
@@ -46,6 +61,9 @@ func LoadScheduledTasks(dataDir string) []ScheduledTask {
 	return nil
 }
 
+/*
+SaveScheduledTasks persists the slice of scheduled tasks as indented JSON.
+*/
 func SaveScheduledTasks(dataDir string, tasks []ScheduledTask) error {
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		return err
@@ -60,6 +78,9 @@ func SaveScheduledTasks(dataDir string, tasks []ScheduledTask) error {
 	return os.WriteFile(ScheduledTasksFilePath(dataDir), bytes, 0o644)
 }
 
+/*
+LoadFavoriteChats reads persisted favourite chat records from disk.
+*/
 func LoadFavoriteChats(dataDir string) []FavoriteChatRecord {
 	path := FavoriteChatsFilePath(dataDir)
 	data, err := os.ReadFile(path)
@@ -73,6 +94,9 @@ func LoadFavoriteChats(dataDir string) []FavoriteChatRecord {
 	return nil
 }
 
+/*
+SaveFavoriteChats persists the list of favourite chat records as indented JSON.
+*/
 func SaveFavoriteChats(dataDir string, favs []FavoriteChatRecord) error {
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		return err
@@ -87,6 +111,9 @@ func SaveFavoriteChats(dataDir string, favs []FavoriteChatRecord) error {
 	return os.WriteFile(FavoriteChatsFilePath(dataDir), bytes, 0o644)
 }
 
+/*
+LoadHiddenChats reads persisted hidden chat records from disk.
+*/
 func LoadHiddenChats(dataDir string) []HiddenChatRecord {
 	path := HiddenChatsFilePath(dataDir)
 	data, err := os.ReadFile(path)
@@ -100,6 +127,9 @@ func LoadHiddenChats(dataDir string) []HiddenChatRecord {
 	return nil
 }
 
+/*
+SaveHiddenChats persists the list of hidden chat records as indented JSON.
+*/
 func SaveHiddenChats(dataDir string, hidden []HiddenChatRecord) error {
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		return err
@@ -114,6 +144,9 @@ func SaveHiddenChats(dataDir string, hidden []HiddenChatRecord) error {
 	return os.WriteFile(HiddenChatsFilePath(dataDir), bytes, 0o644)
 }
 
+/*
+LoadChatAIConfigs reads per-chat AI configurations from disk keyed by chat ID.
+*/
 func LoadChatAIConfigs(dataDir string) map[int64]ChatAIConfig {
 	out := make(map[int64]ChatAIConfig)
 	path := ChatAIConfigFilePath(dataDir)
@@ -139,6 +172,9 @@ func LoadChatAIConfigs(dataDir string) map[int64]ChatAIConfig {
 	return out
 }
 
+/*
+SaveChatAIConfigs persists the per-chat AI configuration map as indented JSON.
+*/
 func SaveChatAIConfigs(dataDir string, cfgs map[int64]ChatAIConfig) error {
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		return err
@@ -159,10 +195,16 @@ func SaveChatAIConfigs(dataDir string, cfgs map[int64]ChatAIConfig) error {
 	return os.WriteFile(ChatAIConfigFilePath(dataDir), bytes, 0o644)
 }
 
+/*
+ChatSkillOutputsFilePath returns the JSON file path for per-chat skill output records.
+*/
 func ChatSkillOutputsFilePath(dataDir string) string {
 	return filepath.Join(dataDir, "chat_skill_outputs.json")
 }
 
+/*
+LoadChatSkillOutputs reads per-chat skill output records from disk keyed by chat ID.
+*/
 func LoadChatSkillOutputs(dataDir string) map[int64]SkillOutputRecord {
 	out := make(map[int64]SkillOutputRecord)
 	path := ChatSkillOutputsFilePath(dataDir)
@@ -182,6 +224,9 @@ func LoadChatSkillOutputs(dataDir string) map[int64]SkillOutputRecord {
 	return out
 }
 
+/*
+SaveChatSkillOutputs persists the per-chat skill output records map as indented JSON.
+*/
 func SaveChatSkillOutputs(dataDir string, outputs map[int64]SkillOutputRecord) error {
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		return err
@@ -214,6 +259,9 @@ func SaveChatSkillOutputs(dataDir string, outputs map[int64]SkillOutputRecord) e
 	return os.WriteFile(ChatSkillOutputsFilePath(dataDir), bytes, 0o644)
 }
 
+/*
+DemoSkillOutput constructs a sample SkillOutputRecord for a chat in the requested language.
+*/
 func DemoSkillOutput(chat ChatInfo, lang string) SkillOutputRecord {
 	isRu := strings.ToLower(strings.TrimSpace(lang)) == "ru"
 	if isRu {
@@ -250,6 +298,9 @@ func DemoSkillOutput(chat ChatInfo, lang string) SkillOutputRecord {
 	}
 }
 
+/*
+DiscoverChatPeriodFolders returns all saved period summary records belonging to the given chat.
+*/
 func DiscoverChatPeriodFolders(exportsDir string, chat ChatInfo) []PeriodSummaryRecord {
 	all := DiscoverAllPeriodFolders(exportsDir)
 	chatSlug := config.Slugify(chat.Title)
@@ -263,6 +314,9 @@ func DiscoverChatPeriodFolders(exportsDir string, chat ChatInfo) []PeriodSummary
 	return filtered
 }
 
+/*
+DemoLiveMessages returns built-in demo messages for a chat when running in offline demo mode.
+*/
 func DemoLiveMessages(chat ChatInfo) []LiveMessage {
 	switch chat.ChatID {
 	case -1001849201: // Core Backend & Infra
@@ -297,6 +351,9 @@ var DemoChats = []ChatInfo{
 	{ChatID: 48291042, Title: "Alexey (Tech Lead)", ChatType: "dm", UnreadCount: 2},
 }
 
+/*
+SavePeriodRun writes a period summary record's metadata JSON, summary markdown, and media index to disk.
+*/
 func SavePeriodRun(rec PeriodSummaryRecord) error {
 	if err := os.MkdirAll(rec.FolderPath, 0o755); err != nil {
 		return err
@@ -317,6 +374,9 @@ func SavePeriodRun(rec PeriodSummaryRecord) error {
 	return os.WriteFile(filepath.Join(rec.FolderPath, "summary.md"), []byte(summaryMD), 0o644)
 }
 
+/*
+LoadPeriodRun reads a PeriodSummaryRecord from a period export folder's metadata.json.
+*/
 func LoadPeriodRun(folderPath string) (*PeriodSummaryRecord, error) {
 	metaFile := filepath.Join(folderPath, "metadata.json")
 	data, err := os.ReadFile(metaFile)
@@ -331,6 +391,9 @@ func LoadPeriodRun(folderPath string) (*PeriodSummaryRecord, error) {
 	return &rec, nil
 }
 
+/*
+DeletePeriodRun safely removes a period export folder after verifying it resides inside exportsDir.
+*/
 func DeletePeriodRun(folderPath string, exportsDir string) error {
 	cleanFolder := filepath.Clean(folderPath)
 	cleanExports := filepath.Clean(exportsDir)
@@ -363,6 +426,9 @@ func DeletePeriodRun(folderPath string, exportsDir string) error {
 	return nil
 }
 
+/*
+DiscoverAllPeriodFolders scans exportsDir and returns all valid period summary records sorted newest first.
+*/
 func DiscoverAllPeriodFolders(exportsDir string) []PeriodSummaryRecord {
 	var records []PeriodSummaryRecord
 	chatDirs, err := os.ReadDir(exportsDir)
@@ -400,6 +466,9 @@ func DiscoverAllPeriodFolders(exportsDir string) []PeriodSummaryRecord {
 	return records
 }
 
+/*
+EnsureDemoPeriodFolders seeds sample period export folders if exportsDir is empty and returns all discovered records.
+*/
 func EnsureDemoPeriodFolders(cfg *config.AppConfig) []PeriodSummaryRecord {
 	existing := DiscoverAllPeriodFolders(cfg.ExportsDir)
 	if len(existing) > 0 {
@@ -557,6 +626,9 @@ func EnsureDemoPeriodFolders(cfg *config.AppConfig) []PeriodSummaryRecord {
 	return []PeriodSummaryRecord{rec1, rec2}
 }
 
+/*
+BuildSummaryMarkdown formats a PeriodSummaryRecord into a Markdown summary report.
+*/
 func BuildSummaryMarkdown(rec PeriodSummaryRecord) string {
 	skillLine := "legacy prompt (no skill)"
 	if rec.Skill != "" {

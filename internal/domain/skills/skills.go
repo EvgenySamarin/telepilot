@@ -70,9 +70,11 @@ type Skill struct {
 	Hash        string // sha256 of the full SKILL.md content (first 12 hex chars)
 }
 
-// EnsureDefaults writes the bundled default skills into dir if the directory is fresh
-// or has not been initialized yet. Once initialized, it creates a .initialized marker
-// so that user deletions are preserved and defaults are not resurrected on every restart.
+/*
+EnsureDefaults writes the bundled default skills into dir if the directory is fresh
+or has not been initialized yet. Once initialized, it creates a .initialized marker
+so that user deletions are preserved and defaults are not resurrected on every restart.
+*/
 func EnsureDefaults(dir string) error {
 	if dir == "" {
 		return nil
@@ -127,9 +129,11 @@ func EnsureDefaults(dir string) error {
 	return walkErr
 }
 
-// ResetDefaults restores all bundled default skills from defaultsFS into dir,
-// ensuring any missing or modified default files are restored,
-// while preserving any custom user-created skills.
+/*
+ResetDefaults restores all bundled default skills from defaultsFS into dir,
+ensuring any missing or modified default files are restored,
+while preserving any custom user-created skills.
+*/
 func ResetDefaults(dir string) error {
 	if dir == "" {
 		return fmt.Errorf("empty skills directory")
@@ -159,8 +163,10 @@ func ResetDefaults(dir string) error {
 	return walkErr
 }
 
-// Load parses every <dir>/<name>/SKILL.md (and also normalizes standalone .md files
-// or single-.md folders added via macOS Finder). Broken skills are skipped and reported in errs.
+/*
+Load parses every <dir>/<name>/SKILL.md (and also normalizes standalone .md files
+or single-.md folders added via macOS Finder). Broken skills are skipped and reported in errs.
+*/
 func Load(dir string) (list []Skill, errs []error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -281,8 +287,10 @@ func findSingleMarkdownInDir(folderPath string) (string, []byte, bool) {
 	return mdFiles[0], data, true
 }
 
-// EnsureFrontmatter wraps plain Markdown instructions in a default summary skill frontmatter
-// if the file does not already start with "---". If it starts with "---", it is returned as-is.
+/*
+EnsureFrontmatter wraps plain Markdown instructions in a default summary skill frontmatter
+if the file does not already start with "---". If it starts with "---", it is returned as-is.
+*/
 func EnsureFrontmatter(fallbackSlug string, data []byte) []byte {
 	content := strings.ReplaceAll(string(data), "\r\n", "\n")
 	trimmed := strings.TrimSpace(content)
@@ -311,7 +319,9 @@ func EnsureFrontmatter(fallbackSlug string, data []byte) []byte {
 	return []byte(wrapped)
 }
 
-// Parse parses SKILL.md content.
+/*
+Parse parses SKILL.md content.
+*/
 func Parse(path string, data []byte) (Skill, error) {
 	content := strings.ReplaceAll(string(data), "\r\n", "\n")
 	sum := sha256.Sum256([]byte(content))
@@ -389,7 +399,9 @@ func stripInlineComment(v string) string {
 	return v
 }
 
-// Find returns the skill with the given name.
+/*
+Find returns the skill with the given name.
+*/
 func Find(list []Skill, name string) (Skill, bool) {
 	name = strings.TrimSpace(name)
 	for _, s := range list {
@@ -400,7 +412,9 @@ func Find(list []Skill, name string) (Skill, bool) {
 	return Skill{}, false
 }
 
-// Summaries returns only summary skills.
+/*
+Summaries returns only summary skills.
+*/
 func Summaries(list []Skill) []Skill {
 	var out []Skill
 	for _, s := range list {
@@ -411,8 +425,10 @@ func Summaries(list []Skill) []Skill {
 	return out
 }
 
-// ForMedia returns the media skill handling the given media kind:
-// an exact match first, then a "*" fallback skill.
+/*
+ForMedia returns the media skill handling the given media kind:
+an exact match first, then a "*" fallback skill.
+*/
 func ForMedia(list []Skill, mediaKind string) (Skill, bool) {
 	var fallback *Skill
 	for i := range list {
@@ -442,7 +458,9 @@ var (
 	stickerExts = map[string]bool{".webp": true, ".tgs": true}
 )
 
-// ClassifyMedia maps a stored media item (app-level media type + file name) to a media kind.
+/*
+ClassifyMedia maps a stored media item (app-level media type + file name) to a media kind.
+*/
 func ClassifyMedia(mediaType, fileName string) string {
 	ext := strings.ToLower(filepath.Ext(fileName))
 	base := strings.ToLower(filepath.Base(fileName))
@@ -474,7 +492,9 @@ func ClassifyMedia(mediaType, fileName string) string {
 
 var slugRe = regexp.MustCompile(`[^a-z0-9-]+`)
 
-// Slug normalizes a user-entered skill name into a folder-safe identifier.
+/*
+Slug normalizes a user-entered skill name into a folder-safe identifier.
+*/
 func Slug(name string) string {
 	s := strings.ToLower(strings.TrimSpace(name))
 	s = strings.ReplaceAll(s, " ", "-")
@@ -487,7 +507,9 @@ func Slug(name string) string {
 	return s
 }
 
-// Create scaffolds a new summary skill from a template and returns its SKILL.md path.
+/*
+Create scaffolds a new summary skill from a template and returns its SKILL.md path.
+*/
 func Create(dir, name string) (string, error) {
 	slug := Slug(name)
 	if slug == "" {
@@ -517,8 +539,10 @@ translate messages, or produce any custom output in Tab 3 (AI Output) and live c
 	return path, nil
 }
 
-// Import imports one or more skills from srcPath (which may be a SKILL.md file, any .md file,
-// a skill directory containing SKILL.md, or a parent directory of skill folders) into destDir.
+/*
+Import imports one or more skills from srcPath (which may be a SKILL.md file, any .md file,
+a skill directory containing SKILL.md, or a parent directory of skill folders) into destDir.
+*/
 func Import(destDir, srcPath string) ([]Skill, error) {
 	srcPath = strings.TrimSpace(srcPath)
 	if srcPath == "" {

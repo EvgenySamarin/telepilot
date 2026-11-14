@@ -16,7 +16,9 @@ const (
 	Ru = "ru"
 )
 
-// Normalize returns either "ru" or "en" (default).
+/*
+Normalize returns either "ru" or "en" (default).
+*/
 func Normalize(lang string) string {
 	l := strings.ToLower(strings.TrimSpace(lang))
 	if l == "ru" || strings.HasPrefix(l, "ru_") || strings.HasPrefix(l, "ru-") {
@@ -25,7 +27,9 @@ func Normalize(lang string) string {
 	return En
 }
 
-// IsRussian checks if the language code is Russian.
+/*
+IsRussian checks if the language code is Russian.
+*/
 func IsRussian(lang string) bool {
 	return Normalize(lang) == Ru
 }
@@ -335,7 +339,9 @@ var messages = map[string]map[string]string{
 	},
 }
 
-// T translates a key for the given language.
+/*
+T translates a key for the given language.
+*/
 func T(lang, key string, args ...any) string {
 	l := Normalize(lang)
 	dict, ok := messages[l]

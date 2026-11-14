@@ -22,8 +22,10 @@ import (
 	"telepilot/internal/domain/storage"
 )
 
-// ParseChatPeriod scrapes messages & downloads media for a given chat and period, then generates AI summaries.
-// skillName selects the summary skill; notes are optional extra instructions for this run.
+/*
+ParseChatPeriod scrapes messages & downloads media for a given chat and period, then generates AI summaries.
+skillName selects the summary skill; notes are optional extra instructions for this run.
+*/
 func (s *Service) ParseChatPeriod(
 	ctx context.Context,
 	chat storage.ChatInfo,

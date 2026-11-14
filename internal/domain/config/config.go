@@ -44,7 +44,9 @@ const LegacyDefaultPrompt = "Provide a comprehensive executive summary of this c
 // DefaultSkillName is the summary skill used when DEFAULT_SKILL is not set.
 const DefaultSkillName = "period-summary"
 
-// NormalizeNotes drops the legacy built-in prompt so it is not duplicated on top of a skill.
+/*
+NormalizeNotes drops the legacy built-in prompt so it is not duplicated on top of a skill.
+*/
 func NormalizeNotes(s string) string {
 	s = strings.TrimSpace(s)
 	if s == LegacyDefaultPrompt {
@@ -53,11 +55,16 @@ func NormalizeNotes(s string) string {
 	return s
 }
 
-// SkillsDir is where skills are stored (<project>/.agents/skills).
+/*
+SkillsDir is where skills are stored (<project>/.agents/skills).
+*/
 func (c *AppConfig) SkillsDir() string {
 	return filepath.Join(c.ProjectRoot, ".agents", "skills")
 }
 
+/*
+ResolveProjectRoot determines the project root directory from TELEPILOT_HOME, DefaultProjectDir, or the current working directory.
+*/
 func ResolveProjectRoot() string {
 	if envHome := strings.TrimSpace(os.Getenv("TELEPILOT_HOME")); envHome != "" {
 		return envHome
@@ -72,6 +79,9 @@ func ResolveProjectRoot() string {
 	return "."
 }
 
+/*
+Load reads .env and environment variables to construct and initialize an AppConfig.
+*/
 func Load() *AppConfig {
 	root := ResolveProjectRoot()
 	envMap := loadDotEnv(filepath.Join(root, ".env"))
@@ -131,10 +141,16 @@ func Load() *AppConfig {
 	}
 }
 
+/*
+HasTelegramCredentials reports whether both Telegram API ID and API hash are configured.
+*/
 func (c *AppConfig) HasTelegramCredentials() bool {
 	return c.TelegramAPIID > 0 && strings.TrimSpace(c.TelegramAPIHash) != ""
 }
 
+/*
+AgyCLIBin resolves the path to the agy CLI executable from configuration, PATH, or standard install locations.
+*/
 func (c *AppConfig) AgyCLIBin() string {
 	if custom := strings.TrimSpace(c.AgyCLIBinPath); custom != "" {
 		if st, err := os.Stat(custom); err == nil && !st.IsDir() {
@@ -163,6 +179,9 @@ func (c *AppConfig) AgyCLIBin() string {
 	return ""
 }
 
+/*
+ActiveModelLabel returns a human-readable label for the currently active AI CLI and model.
+*/
 func (c *AppConfig) ActiveModelLabel() string {
 	if c.AgyCLIBin() != "" {
 		model := strings.TrimSpace(c.AgyModel)
@@ -174,6 +193,9 @@ func (c *AppConfig) ActiveModelLabel() string {
 	return "agy-cli/unconfigured"
 }
 
+/*
+SaveAIConfig updates the AGY CLI binary path and model preset and persists them to .env.
+*/
 func (c *AppConfig) SaveAIConfig(agyBinPath, agyModel string) {
 	c.AgyCLIBinPath = strings.TrimSpace(agyBinPath)
 	if strings.TrimSpace(agyModel) != "" {
@@ -184,6 +206,9 @@ func (c *AppConfig) SaveAIConfig(agyBinPath, agyModel string) {
 	c.SaveCredentials(c.TelegramAPIID, c.TelegramAPIHash, c.TelegramServerIP, c.TelegramServerPort, c.AgyModel)
 }
 
+/*
+SessionFilePath returns the MTProto session JSON path scoped to the configured Telegram server IP.
+*/
 func (c *AppConfig) SessionFilePath() string {
 	ipSlug := strings.ReplaceAll(c.TelegramServerIP, ".", "_")
 	if ipSlug == "" {
@@ -192,6 +217,9 @@ func (c *AppConfig) SessionFilePath() string {
 	return filepath.Join(c.DataDir, fmt.Sprintf("session_%s.json", ipSlug))
 }
 
+/*
+GetPeriodFolder returns (and creates) the export directory for a chat and date range, including media subdirectories.
+*/
 func (c *AppConfig) GetPeriodFolder(chatTitle string, start, end time.Time) string {
 	chatSlug := Slugify(chatTitle)
 	periodSlug := fmt.Sprintf("%s_to_%s", start.Format("2006-01-02"), end.Format("2006-01-02"))
@@ -202,6 +230,9 @@ func (c *AppConfig) GetPeriodFolder(chatTitle string, start, end time.Time) stri
 	return folder
 }
 
+/*
+SaveCredentials updates Telegram API credentials, server endpoint, and AI model in memory and persists them to .env.
+*/
 func (c *AppConfig) SaveCredentials(apiID int, apiHash, serverIP string, serverPort int, agyModel string) {
 	if apiID > 0 {
 		c.TelegramAPIID = apiID
@@ -250,7 +281,9 @@ func (c *AppConfig) SaveCredentials(apiID int, apiHash, serverIP string, serverP
 	_ = os.Chmod(envPath, 0o600)
 }
 
-// SaveLanguage updates and persists the preferred UI & skills language ("en" or "ru").
+/*
+SaveLanguage updates and persists the preferred UI & skills language ("en" or "ru").
+*/
 func (c *AppConfig) SaveLanguage(lang string) {
 	if strings.ToLower(strings.TrimSpace(lang)) == "ru" {
 		c.Language = "ru"
@@ -260,12 +293,16 @@ func (c *AppConfig) SaveLanguage(lang string) {
 	c.SaveCredentials(c.TelegramAPIID, c.TelegramAPIHash, c.TelegramServerIP, c.TelegramServerPort, c.AgyModel)
 }
 
-// IsRussian reports whether the current configured language is Russian.
+/*
+IsRussian reports whether the current configured language is Russian.
+*/
 func (c *AppConfig) IsRussian() bool {
 	return strings.ToLower(c.Language) == "ru"
 }
 
-// SaveSkillSettings persists the active summary skill and the extra run notes to .env.
+/*
+SaveSkillSettings persists the active summary skill and the extra run notes to .env.
+*/
 func (c *AppConfig) SaveSkillSettings(skillName, notes string) {
 	if s := strings.TrimSpace(skillName); s != "" {
 		c.DefaultSkill = s
@@ -277,6 +314,9 @@ func (c *AppConfig) SaveSkillSettings(skillName, notes string) {
 var nonWordRe = regexp.MustCompile(`[^\p{L}\p{N}\s_-]+`)
 var spaceDashRe = regexp.MustCompile(`[-\s_]+`)
 
+/*
+Slugify converts an arbitrary title or label into a filesystem-safe lowercase underscore slug.
+*/
 func Slugify(value string) string {
 	v := strings.ToLower(strings.TrimSpace(value))
 	v = nonWordRe.ReplaceAllString(v, "")
@@ -290,6 +330,9 @@ func Slugify(value string) string {
 
 var periodRe = regexp.MustCompile(`^(\d+)\s*([dwmy])$`)
 
+/*
+ParsePeriod parses a relative window (e.g. 1w, 1m) or explicit date range (YYYY-MM-DD..YYYY-MM-DD) into UTC start/end bounds and a display label.
+*/
 func ParsePeriod(spec string) (time.Time, time.Time, string) {
 	now := time.Now().UTC()
 	s := strings.ToLower(strings.TrimSpace(spec))
