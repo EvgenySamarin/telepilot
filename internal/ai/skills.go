@@ -370,8 +370,8 @@ func (e *Engine) ExecuteChatSkill(
 
 	var msgLines []string
 	start := 0
-	if len(messages) > 100 {
-		start = len(messages) - 100
+	if len(messages) > 1000 {
+		start = len(messages) - 1000
 	}
 	for _, m := range messages[start:] {
 		sender := strings.TrimSpace(m.Sender)
@@ -394,6 +394,8 @@ func (e *Engine) ExecuteChatSkill(
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "You are executing the AI skill %q on the Telegram chat %q.\n\n", sk.Name, chat.Title)
+	b.WriteString(CapabilitiesPrompt(messages, false, true))
+	b.WriteString("\n")
 	fmt.Fprintf(&b, "Follow these skill instructions (skill: %s):\n<skill>\n%s\n</skill>\n", sk.Name, sk.Body)
 	if n := strings.TrimSpace(notes); n != "" {
 		fmt.Fprintf(&b, "\nAdditional per-chat instructions from the user:\n%s\n", n)

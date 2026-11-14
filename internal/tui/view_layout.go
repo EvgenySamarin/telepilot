@@ -27,11 +27,13 @@ func (m *Model) View() string {
 	}
 
 	topBar := m.renderTopBar()
+	statusBar := m.renderStatusLine()
 	bottomBar := m.renderBottomBar()
 
 	topH := lipgloss.Height(topBar)
+	statusH := lipgloss.Height(statusBar)
 	bottomH := lipgloss.Height(bottomBar)
-	bodyHeight := m.height - topH - bottomH
+	bodyHeight := m.height - topH - statusH - bottomH
 	if bodyHeight < 6 {
 		bodyHeight = 6
 	}
@@ -54,17 +56,74 @@ func (m *Model) View() string {
 	mainPane := m.renderMainPanel(mainWidth, bodyHeight)
 
 	body := lipgloss.JoinHorizontal(lipgloss.Top, sidebar, " ", mainPane)
-	rawView := lipgloss.JoinVertical(lipgloss.Left, topBar, body, bottomBar)
+	rawView := lipgloss.JoinVertical(lipgloss.Left, topBar, body, statusBar, bottomBar)
 	return clampViewToTerminal(rawView, m.width, m.height)
 }
 
-func (m *Model) renderTopBar() string {
-	icon := "◉"
-	statusColor := colGreen
-	if m.statusBusy {
-		icon = "⟳"
-		statusColor = colYellow
+var statusSpinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+
+func formatTimerMMSS(d time.Duration) string {
+	if d < 0 {
+		d = 0
 	}
+	totalSec := int(d.Seconds())
+	mins := totalSec / 60
+	secs := totalSec % 60
+	return fmt.Sprintf("%02d:%02d", mins, secs)
+}
+
+func (m *Model) renderStatusLine() string {
+	baseStyle := lipgloss.NewStyle().
+		Width(m.width).
+		Background(colPanelBg)
+
+	if !m.statusBusy {
+		line := padOrTruncate(" ◉ "+m.statusText, m.width)
+		return baseStyle.Foreground(colGreen).Bold(true).Render(line)
+	}
+
+	idx := m.marqueeTick % len(statusSpinnerFrames)
+	if idx < 0 {
+		idx = 0
+	}
+	spinner := statusSpinnerFrames[idx]
+
+	var elapsed time.Duration
+	if !m.statusStartedAt.IsZero() {
+		elapsed = time.Since(m.statusStartedAt)
+		if elapsed < 0 {
+			elapsed = 0
+		}
+	}
+
+	var timerText string
+	timerCol := colCyan
+	if timeout := m.cfg.AgyTimeout(); timeout == 0 {
+		timerText = fmt.Sprintf(" ⏱ %s (∞) ", formatTimerMMSS(elapsed))
+	} else {
+		timerText = fmt.Sprintf(" ⏱ %ds / %ds ", int(elapsed.Seconds()), int(timeout.Seconds()))
+		if elapsed*4 >= timeout*3 {
+			timerCol = colRed
+		}
+	}
+
+	timerW := lipgloss.Width(timerText)
+	leftW := m.width - timerW
+	if leftW < 10 {
+		leftW = 10
+	}
+	left := padOrTruncate(" "+spinner+" "+m.statusText, leftW)
+	leftStyled := lipgloss.NewStyle().Background(colPanelBg).Foreground(colYellow).Bold(true).Render(left)
+	rightStyled := lipgloss.NewStyle().Background(colPanelBg).Foreground(timerCol).Bold(true).Render(timerText)
+
+	gap := m.width - lipgloss.Width(left) - timerW
+	if gap < 0 {
+		gap = 0
+	}
+	return baseStyle.Render(leftStyled + strings.Repeat(" ", gap) + rightStyled)
+}
+
+func (m *Model) renderTopBar() string {
 	chatTitle := "None"
 	aiBadge := ""
 	if ch := m.activeChat(); ch != nil {
@@ -83,8 +142,7 @@ func (m *Model) renderTopBar() string {
 		}
 	}
 
-	left := fmt.Sprintf(" %s │ %s%s",
-		lipgloss.NewStyle().Foreground(statusColor).Bold(true).Render(icon+" "+m.statusText),
+	left := fmt.Sprintf(" %s%s",
 		m.T("active_chat_hdr", lipgloss.NewStyle().Foreground(colCyan).Bold(true).Render(chatTitle)),
 		aiBadge,
 	)

@@ -268,6 +268,59 @@ func (m *Model) loadChatMessagesCmd(chat storage.ChatInfo) tea.Cmd {
 	}
 }
 
+func (m *Model) loadOlderMessagesCmd(chat storage.ChatInfo, beforeMsgID int, limit int) tea.Cmd {
+	if m.isChatHidden(chat.ChatID) || m.mtproto == nil || beforeMsgID <= 0 {
+		return nil
+	}
+	m.liveLoadingOlder = true
+	m.statusText = fmt.Sprintf("Loading up to %d older messages...", limit)
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+		defer cancel()
+		msgs, hasMore, err := m.mtproto.FetchOlderMessages(ctx, chat, beforeMsgID, limit)
+		return olderMessagesLoadedMsg{
+			chatID:   chat.ChatID,
+			messages: msgs,
+			hasMore:  hasMore,
+			err:      err,
+		}
+	}
+}
+
+func (m *Model) loadMessagesByDateCmd(chat storage.ChatInfo, targetDate time.Time, dateLabel string) tea.Cmd {
+	if m.isChatHidden(chat.ChatID) || m.mtproto == nil {
+		return nil
+	}
+	m.liveLoadingOlder = true
+	m.statusText = fmt.Sprintf("Jumping to messages around %s...", dateLabel)
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		msgs, err := m.mtproto.FetchMessagesByDate(ctx, chat, targetDate, 100)
+		return dateMessagesLoadedMsg{
+			chatID:    chat.ChatID,
+			dateLabel: dateLabel,
+			messages:  msgs,
+			err:       err,
+		}
+	}
+}
+
+func (m *Model) maybeLoadOlderCmd() tea.Cmd {
+	if m.liveLoadingOlder || len(m.liveMessages) == 0 {
+		return nil
+	}
+	ch := m.activeChat()
+	if ch == nil {
+		return nil
+	}
+	if hasMore, known := m.liveHasMore[ch.ChatID]; known && !hasMore {
+		m.statusText = "Reached start of chat history"
+		return nil
+	}
+	return m.loadOlderMessagesCmd(*ch, m.liveMessages[0].MessageID, 100)
+}
+
 func (m *Model) sendLiveMessageCmd(chat storage.ChatInfo, text string) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
@@ -577,9 +630,33 @@ func (m *Model) runSingleShotInstructionCmd(instruction string, appendMode bool)
 			default:
 			}
 
-			planCtx, planCancel := m.cfg.WithAgyTimeout(runCtx)
-			actions, err := m.ai.PlanSingleShotInstruction(planCtx, target.Title, msgsCopy, nextInstr)
-			planCancel()
+			var actions []ai.SingleShotAction
+			var err error
+			for histStep := 0; histStep < 3; histStep++ {
+				planCtx, planCancel := m.cfg.WithAgyTimeout(runCtx)
+				actions, err = m.ai.PlanSingleShotInstruction(planCtx, target.Title, msgsCopy, nextInstr)
+				planCancel()
+				if err != nil {
+					break
+				}
+				if len(actions) == 1 && histStep < 2 {
+					if dir, ok := ai.ExtractHistoryDirective(actions[0].Text); ok {
+						expanded, fetchedCount, hErr := m.fetchHistoryForDirective(runCtx, target, msgsCopy, dir)
+						if hErr != nil {
+							m.uiEventCh <- parseLogMsg(fmt.Sprintf("History load for AI failed: %v", hErr))
+							break
+						}
+						if fetchedCount == 0 {
+							m.uiEventCh <- parseLogMsg("AI requested older history, but no additional messages were returned.")
+							break
+						}
+						msgsCopy = expanded
+						m.uiEventCh <- parseLogMsg(fmt.Sprintf("Loaded %d messages for AI single-shot (%d total).", fetchedCount, len(msgsCopy)))
+						continue
+					}
+				}
+				break
+			}
 			if err != nil {
 				if runCtx.Err() != nil {
 					return
@@ -721,6 +798,7 @@ func (m *Model) runChatAICmd() tea.Cmd {
 	copy(msgsCopy, m.liveMessages)
 
 	m.statusBusy = true
+	m.statusStartedAt = time.Now()
 	m.jobDone = 0
 	m.jobTotal = 1
 	m.statusText = fmt.Sprintf("Running skill (%s)...", skillName)
@@ -728,16 +806,85 @@ func (m *Model) runChatAICmd() tea.Cmd {
 	go func() {
 		ctx, cancel := m.cfg.WithAgyTimeout(context.Background())
 		defer cancel()
-		m.uiEventCh <- parseLogMsg(fmt.Sprintf("Running AI skill '%s' on chat '%s' (%d messages)...", skillName, target.Title, len(msgsCopy)))
-		rec, err := m.ai.ExecuteChatSkill(ctx, target, skillName, notes, msgsCopy)
-		if err != nil {
-			m.uiEventCh <- parseDoneMsg{record: nil, err: err}
-			return
+		var rec storage.SkillOutputRecord
+		var err error
+		for histStep := 0; histStep < 3; histStep++ {
+			m.uiEventCh <- parseLogMsg(fmt.Sprintf("Running AI skill '%s' on chat '%s' (%d messages)...", skillName, target.Title, len(msgsCopy)))
+			rec, err = m.ai.ExecuteChatSkill(ctx, target, skillName, notes, msgsCopy)
+			if err != nil {
+				m.uiEventCh <- parseDoneMsg{record: nil, err: err}
+				return
+			}
+			if histStep < 2 {
+				if dir, ok := ai.ExtractHistoryDirective(rec.Output); ok {
+					expanded, fetchedCount, hErr := m.fetchHistoryForDirective(ctx, target, msgsCopy, dir)
+					if hErr != nil {
+						m.uiEventCh <- parseLogMsg(fmt.Sprintf("History load for skill failed: %v", hErr))
+						break
+					}
+					if fetchedCount == 0 {
+						m.uiEventCh <- parseLogMsg("Skill requested older history, but no additional messages were returned.")
+						break
+					}
+					msgsCopy = expanded
+					m.uiEventCh <- parseLogMsg(fmt.Sprintf("Loaded %d messages for skill '%s' (%d total).", fetchedCount, skillName, len(msgsCopy)))
+					continue
+				}
+			}
+			break
 		}
 		m.uiEventCh <- parseDoneMsg{record: &rec, err: nil}
 	}()
 
 	return nil
+}
+
+func (m *Model) fetchHistoryForDirective(
+	ctx context.Context,
+	chat storage.ChatInfo,
+	current []storage.LiveMessage,
+	dir *ai.HistoryDirective,
+) ([]storage.LiveMessage, int, error) {
+	if m.mtproto == nil || dir == nil {
+		return current, 0, nil
+	}
+	fctx, cancel := context.WithTimeout(ctx, 25*time.Second)
+	defer cancel()
+
+	var fetched []storage.LiveMessage
+	var hasMore bool
+	var err error
+	if dir.Date != "" {
+		fetched, err = m.mtproto.FetchMessagesByDate(fctx, chat, dir.ParsedDate, 100)
+		hasMore = true
+	} else if dir.Count > 0 {
+		beforeID := 0
+		if len(current) > 0 {
+			beforeID = current[0].MessageID
+		}
+		if beforeID > 0 {
+			fetched, hasMore, err = m.mtproto.FetchOlderMessages(fctx, chat, beforeID, dir.Count)
+		} else {
+			fetched, err = m.mtproto.FetchRecentMessages(fctx, chat, dir.Count)
+			hasMore = true
+		}
+	}
+	if err != nil {
+		return current, 0, err
+	}
+	if len(fetched) == 0 {
+		return current, 0, nil
+	}
+	merged := mergeLiveMessages(fetched, current)
+	added := len(merged) - len(current)
+	if added < 0 {
+		added = len(fetched)
+	}
+	select {
+	case m.uiEventCh <- olderMessagesLoadedMsg{chatID: chat.ChatID, messages: fetched, hasMore: hasMore}:
+	default:
+	}
+	return merged, added, nil
 }
 
 func copyToClipboard(text string) error {

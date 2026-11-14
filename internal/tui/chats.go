@@ -317,16 +317,27 @@ func (m *Model) selectChatAtIndex(idx int) tea.Cmd {
 	if idx < 0 || idx >= len(m.chats) {
 		return nil
 	}
+	if m.selectedChatID != 0 && len(m.liveMessages) > 0 && m.liveMsgCache != nil {
+		m.liveMsgCache[m.selectedChatID] = m.liveMessages
+	}
 	m.chatCursor = idx
 	ch := m.chats[idx]
 	m.selectedChatID = ch.ChatID
 	m.chatComposing = false
 	m.chatInputBuffer = ""
+	m.liveLoadingOlder = false
 	m.mainScroll = 0
 	m.syncCurrentChatAISettings()
-	m.liveMessages = storage.DemoLiveMessages(ch)
+	if cached, ok := m.liveMsgCache[ch.ChatID]; ok && len(cached) > 0 {
+		m.liveMessages = cached
+	} else {
+		m.liveMessages = storage.DemoLiveMessages(ch)
+	}
 	m.liveMsgCursor = maxInt(0, len(m.liveMessages)-1)
 	m.addTrace(fmt.Sprintf("Selected chat '%s' (id=%d)", ch.Title, ch.ChatID))
+	if m.liveHistoryByDate[ch.ChatID] != "" {
+		return nil
+	}
 	return m.loadChatMessagesCmd(ch)
 }
 

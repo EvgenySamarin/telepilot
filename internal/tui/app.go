@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -43,6 +44,8 @@ type TelegramClient interface {
 	CheckAuthorized(ctx context.Context) (bool, string)
 	ListDialogs(ctx context.Context, limit int) ([]storage.ChatInfo, error)
 	FetchRecentMessages(ctx context.Context, chat storage.ChatInfo, limit int) ([]storage.LiveMessage, error)
+	FetchOlderMessages(ctx context.Context, chat storage.ChatInfo, beforeMsgID int, limit int) ([]storage.LiveMessage, bool, error)
+	FetchMessagesByDate(ctx context.Context, chat storage.ChatInfo, targetDate time.Time, limit int) ([]storage.LiveMessage, error)
 	SendMessage(ctx context.Context, chat storage.ChatInfo, text string) (storage.LiveMessage, error)
 	DownloadMessageMedia(ctx context.Context, chat storage.ChatInfo, msg storage.LiveMessage) (string, error)
 	TestConnection(ctx context.Context, onUpdate func(lines []string)) (bool, []string)
@@ -79,13 +82,17 @@ type Model struct {
 	singleShotRunners map[int64]*chatSingleShotRunner
 
 	// Tab 1: Live Chat state
-	liveMessages     []storage.LiveMessage
-	liveMsgCursor    int
-	liveScrollOffset int
-	chatComposing    bool
-	chatInputBuffer  string
-	lastLiveSync     time.Time
-	liveStreamCancel context.CancelFunc
+	liveMessages      []storage.LiveMessage
+	liveMsgCursor     int
+	liveScrollOffset  int
+	liveMsgCache      map[int64][]storage.LiveMessage
+	liveHasMore       map[int64]bool
+	liveLoadingOlder  bool
+	liveHistoryByDate map[int64]string
+	chatComposing     bool
+	chatInputBuffer   string
+	lastLiveSync      time.Time
+	liveStreamCancel  context.CancelFunc
 
 	// Tab 3: Per-chat AI skill execution outputs (persisted in data/chat_skill_outputs.json)
 	skillOutputs map[int64]storage.SkillOutputRecord
@@ -98,8 +105,9 @@ type Model struct {
 
 	mainScroll int
 
-	statusText  string
-	statusBusy  bool
+	statusText      string
+	statusBusy      bool
+	statusStartedAt time.Time
 	authUser    string
 	periodSpec  string
 	runNotes    string // extra instructions for current chat
@@ -281,6 +289,9 @@ func NewModel(cfg *config.AppConfig, aiEngine AIEngine, mtSvc TelegramClient, fo
 		singleShotRunners: make(map[int64]*chatSingleShotRunner),
 		liveMessages:      initLiveMsgs,
 		liveMsgCursor:     maxInt(0, len(initLiveMsgs)-1),
+		liveMsgCache:      make(map[int64][]storage.LiveMessage),
+		liveHasMore:       make(map[int64]bool),
+		liveHistoryByDate: make(map[int64]string),
 		lastLiveSync:      time.Now(),
 		skillOutputs:      skillOutputs,
 		scheduledTasks:    schedTasks,
@@ -392,37 +403,129 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.isChatHidden(msg.chatID) {
 			return m, nil
 		}
-		if msg.err == nil && msg.chatID == m.selectedChatID && len(msg.messages) > 0 {
-			wasAtBottom := m.liveMsgCursor >= len(m.liveMessages)-1
-			m.liveMessages = msg.messages
-			m.lastLiveSync = time.Now()
-			if wasAtBottom || m.liveMsgCursor >= len(m.liveMessages) {
-				m.liveMsgCursor = maxInt(0, len(m.liveMessages)-1)
+		if msg.err == nil && len(msg.messages) > 0 {
+			// If the user jumped to a historical date in this chat, don't let background sync overwrite it.
+			if m.liveHistoryByDate[msg.chatID] != "" {
+				return m, nil
 			}
-			// Check if Auto-Reply should trigger on a new incoming message at the end of the chat
-			last := m.liveMessages[len(m.liveMessages)-1]
-			isSelfMsg := last.IsOutgoing || strings.EqualFold(strings.TrimSpace(last.Sender), "You") || m.sentMsgIDs[last.MessageID]
-			if cfg, ok := m.chatAIConfigs[msg.chatID]; ok && cfg.Enabled && cfg.AutoReply {
-				if isSelfMsg {
-					if last.MessageID > cfg.LastAutoRepliedMsgID {
+			merged := mergeLiveMessages(m.liveMsgCache[msg.chatID], msg.messages)
+			m.liveMsgCache[msg.chatID] = merged
+			if _, known := m.liveHasMore[msg.chatID]; !known {
+				m.liveHasMore[msg.chatID] = true
+			}
+			if msg.chatID == m.selectedChatID {
+				wasAtBottom := m.liveMsgCursor >= len(m.liveMessages)-1
+				prevAnchorID := 0
+				if m.liveMsgCursor >= 0 && m.liveMsgCursor < len(m.liveMessages) {
+					prevAnchorID = m.liveMessages[m.liveMsgCursor].MessageID
+				}
+				m.liveMessages = merged
+				m.lastLiveSync = time.Now()
+				if wasAtBottom || m.liveMsgCursor >= len(m.liveMessages) {
+					m.liveMsgCursor = maxInt(0, len(m.liveMessages)-1)
+				} else if prevAnchorID > 0 {
+					for i, lm := range m.liveMessages {
+						if lm.MessageID == prevAnchorID {
+							m.liveMsgCursor = i
+							break
+						}
+					}
+				}
+				// Check if Auto-Reply should trigger on a new incoming message at the end of the chat
+				last := m.liveMessages[len(m.liveMessages)-1]
+				isSelfMsg := last.IsOutgoing || strings.EqualFold(strings.TrimSpace(last.Sender), "You") || m.sentMsgIDs[last.MessageID]
+				if cfg, ok := m.chatAIConfigs[msg.chatID]; ok && cfg.Enabled && cfg.AutoReply {
+					if isSelfMsg {
+						if last.MessageID > cfg.LastAutoRepliedMsgID {
+							cfg.LastAutoRepliedMsgID = last.MessageID
+							m.chatAIConfigs[msg.chatID] = cfg
+							_ = storage.SaveChatAIConfigs(m.cfg.DataDir, m.chatAIConfigs)
+						}
+					} else if cfg.LastAutoRepliedMsgID == 0 {
 						cfg.LastAutoRepliedMsgID = last.MessageID
 						m.chatAIConfigs[msg.chatID] = cfg
 						_ = storage.SaveChatAIConfigs(m.cfg.DataDir, m.chatAIConfigs)
-					}
-				} else if cfg.LastAutoRepliedMsgID == 0 {
-					cfg.LastAutoRepliedMsgID = last.MessageID
-					m.chatAIConfigs[msg.chatID] = cfg
-					_ = storage.SaveChatAIConfigs(m.cfg.DataDir, m.chatAIConfigs)
-				} else if last.MessageID > cfg.LastAutoRepliedMsgID {
-					cfg.LastAutoRepliedMsgID = last.MessageID
-					m.chatAIConfigs[msg.chatID] = cfg
-					_ = storage.SaveChatAIConfigs(m.cfg.DataDir, m.chatAIConfigs)
-					if ch := m.activeChat(); ch != nil && ch.ChatID == msg.chatID {
-						m.addTrace(fmt.Sprintf("Auto-Reply triggered for incoming message #%d in '%s'", last.MessageID, ch.Title))
-						return m, m.generateAIChatReplyCmd(*ch, m.liveMessages, cfg.SendMode)
+					} else if last.MessageID > cfg.LastAutoRepliedMsgID {
+						cfg.LastAutoRepliedMsgID = last.MessageID
+						m.chatAIConfigs[msg.chatID] = cfg
+						_ = storage.SaveChatAIConfigs(m.cfg.DataDir, m.chatAIConfigs)
+						if ch := m.activeChat(); ch != nil && ch.ChatID == msg.chatID {
+							m.addTrace(fmt.Sprintf("Auto-Reply triggered for incoming message #%d in '%s'", last.MessageID, ch.Title))
+							return m, m.generateAIChatReplyCmd(*ch, m.liveMessages, cfg.SendMode)
+						}
 					}
 				}
 			}
+		}
+		return m, nil
+
+	case olderMessagesLoadedMsg:
+		m.liveLoadingOlder = false
+		if m.isChatHidden(msg.chatID) {
+			return m, nil
+		}
+		if msg.err != nil {
+			m.statusText = fmt.Sprintf("History load error: %v", msg.err)
+			return m, nil
+		}
+		m.liveHasMore[msg.chatID] = msg.hasMore
+		if len(msg.messages) == 0 {
+			if !msg.hasMore {
+				m.statusText = "Reached start of chat history"
+			}
+			return m, nil
+		}
+		prevLen := len(m.liveMsgCache[msg.chatID])
+		merged := mergeLiveMessages(msg.messages, m.liveMsgCache[msg.chatID])
+		m.liveMsgCache[msg.chatID] = merged
+		if msg.chatID == m.selectedChatID {
+			prevFirstID := 0
+			if len(m.liveMessages) > 0 {
+				prevFirstID = m.liveMessages[0].MessageID
+			}
+			m.liveMessages = merged
+			addedBefore := 0
+			if prevFirstID > 0 {
+				for _, lm := range m.liveMessages {
+					if lm.MessageID < prevFirstID {
+						addedBefore++
+					} else {
+						break
+					}
+				}
+			} else {
+				addedBefore = maxInt(0, len(merged)-prevLen)
+			}
+			m.liveMsgCursor = minInt(maxInt(0, len(m.liveMessages)-1), m.liveMsgCursor+addedBefore)
+			if !msg.hasMore {
+				m.statusText = fmt.Sprintf("Loaded %d older messages (start of history, total %d)", addedBefore, len(m.liveMessages))
+			} else {
+				m.statusText = fmt.Sprintf("Loaded %d older messages (total %d)", addedBefore, len(m.liveMessages))
+			}
+		}
+		return m, nil
+
+	case dateMessagesLoadedMsg:
+		m.liveLoadingOlder = false
+		if m.isChatHidden(msg.chatID) {
+			return m, nil
+		}
+		if msg.err != nil {
+			m.statusText = fmt.Sprintf("Date jump error: %v", msg.err)
+			return m, nil
+		}
+		if len(msg.messages) == 0 {
+			m.statusText = fmt.Sprintf("No messages found on or before %s", msg.dateLabel)
+			return m, nil
+		}
+		m.liveHistoryByDate[msg.chatID] = msg.dateLabel
+		m.liveHasMore[msg.chatID] = true
+		m.liveMsgCache[msg.chatID] = msg.messages
+		if msg.chatID == m.selectedChatID {
+			m.liveMessages = msg.messages
+			m.liveMsgCursor = maxInt(0, len(m.liveMessages)-1)
+			m.liveScrollOffset = 0
+			m.statusText = fmt.Sprintf("Viewing history around %s (%d msgs) • Press G for live", msg.dateLabel, len(m.liveMessages))
 		}
 		return m, nil
 
@@ -775,6 +878,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case parseDoneMsg:
 		m.statusBusy = false
+		m.statusStartedAt = time.Time{}
 		m.updateAIQuotaStatus(msg.err)
 		if msg.err != nil {
 			m.statusText = "Skill error"
@@ -839,4 +943,30 @@ func (m *Model) SetSkillPreviewModalForCapture(skillIdx int) {
 	}
 	m.previewScroll = 0
 	m.activeModal = modalSkillPreview
+}
+
+func mergeLiveMessages(a, b []storage.LiveMessage) []storage.LiveMessage {
+	if len(a) == 0 && len(b) == 0 {
+		return nil
+	}
+	byID := make(map[int]storage.LiveMessage, len(a)+len(b))
+	var out []storage.LiveMessage
+	var ids []int
+	for _, list := range [][]storage.LiveMessage{a, b} {
+		for _, m := range list {
+			if m.MessageID == 0 {
+				out = append(out, m)
+				continue
+			}
+			if _, exists := byID[m.MessageID]; !exists {
+				ids = append(ids, m.MessageID)
+			}
+			byID[m.MessageID] = m
+		}
+	}
+	sort.Ints(ids)
+	for _, id := range ids {
+		out = append(out, byID[id])
+	}
+	return out
 }

@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -205,6 +206,49 @@ func (m *Model) handleModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.inputBuffer += key
 			} else if key == "space" {
 				m.inputBuffer += " "
+			}
+		}
+		return m, nil
+
+	case modalHistoryLoad:
+		switch key {
+		case "esc":
+			m.inputBuffer = ""
+			m.activeModal = modalNone
+		case "enter":
+			val := strings.TrimSpace(m.inputBuffer)
+			m.inputBuffer = ""
+			m.activeModal = modalNone
+			ch := m.activeChat()
+			if ch == nil {
+				return m, nil
+			}
+			if val == "" {
+				val = "100"
+			}
+			if count, err := strconv.Atoi(val); err == nil && count > 0 {
+				if count > 1000 {
+					count = 1000
+				}
+				if len(m.liveMessages) == 0 {
+					return m, m.loadChatMessagesCmd(*ch)
+				}
+				return m, m.loadOlderMessagesCmd(*ch, m.liveMessages[0].MessageID, count)
+			}
+			if parsedDate, err := time.ParseInLocation("2006-01-02", val, time.Local); err == nil {
+				return m, m.loadMessagesByDateCmd(*ch, parsedDate, val)
+			}
+			m.statusText = "Invalid history spec: use a count (e.g. 200) or YYYY-MM-DD"
+		case "ctrl+u":
+			m.inputBuffer = ""
+		case "backspace":
+			if len(m.inputBuffer) > 0 {
+				_, sz := utf8.DecodeLastRuneInString(m.inputBuffer)
+				m.inputBuffer = m.inputBuffer[:len(m.inputBuffer)-sz]
+			}
+		default:
+			if utf8.RuneCountInString(key) == 1 {
+				m.inputBuffer += key
 			}
 		}
 		return m, nil
@@ -792,6 +836,13 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+	case "P":
+		if m.activeChat() != nil && m.activeTab == 1 {
+			m.inputBuffer = ""
+			m.activeModal = modalHistoryLoad
+			return m, nil
+		}
+
 	case "?":
 		m.activeModal = modalHelp
 
@@ -846,6 +897,12 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case focusMain:
 			switch m.activeTab {
 			case 1:
+				if ch := m.activeChat(); ch != nil && m.liveHistoryByDate[ch.ChatID] != "" {
+					delete(m.liveHistoryByDate, ch.ChatID)
+					delete(m.liveMsgCache, ch.ChatID)
+					m.statusText = "Returning to live messages..."
+					return m, m.loadChatMessagesCmd(*ch)
+				}
 				if len(m.liveMessages) > 0 {
 					m.liveMsgCursor = len(m.liveMessages) - 1
 				}
@@ -891,6 +948,9 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		case focusMain:
 			if m.activeTab == 1 {
+				if m.liveMsgCursor == 0 {
+					return m, m.maybeLoadOlderCmd()
+				}
 				m.liveMsgCursor = maxInt(0, m.liveMsgCursor-5)
 			} else {
 				m.mainScroll = maxInt(0, m.mainScroll-8)
@@ -912,6 +972,8 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			case 1:
 				if m.liveMsgCursor > 0 {
 					m.liveMsgCursor--
+				} else {
+					return m, m.maybeLoadOlderCmd()
 				}
 			case 2:
 				if !m.tab2BoxEntered {

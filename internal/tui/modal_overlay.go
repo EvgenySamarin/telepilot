@@ -33,6 +33,13 @@ func (m *Model) renderModalOverlay() string {
 		modalBox = m.renderHelpModal()
 	case modalSkillPreview:
 		modalBox = m.renderSkillPreviewModal()
+	case modalHistoryLoad:
+		modalBox = m.renderInputModal(
+			"─Load Chat History─",
+			"Enter message count (e.g. 200, max 1000) or date (YYYY-MM-DD):",
+			m.inputBuffer,
+			"Enter: Load/Jump (empty=100)  │  Esc: Cancel",
+		)
 	}
 
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, modalBox)

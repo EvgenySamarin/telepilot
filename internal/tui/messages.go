@@ -35,6 +35,7 @@ const (
 	modalNewSkill
 	modalSkillPreview
 	modalGlobalConfig
+	modalHistoryLoad
 )
 
 // Bubble Tea Messages
@@ -87,6 +88,20 @@ type liveMessagesLoadedMsg struct {
 	chatID   int64
 	messages []storage.LiveMessage
 	err      error
+}
+
+type olderMessagesLoadedMsg struct {
+	chatID   int64
+	messages []storage.LiveMessage
+	hasMore  bool
+	err      error
+}
+
+type dateMessagesLoadedMsg struct {
+	chatID    int64
+	dateLabel string
+	messages  []storage.LiveMessage
+	err       error
 }
 
 type liveIncomingMsg struct {

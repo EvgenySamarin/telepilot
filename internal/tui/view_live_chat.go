@@ -70,6 +70,24 @@ func (m *Model) renderLiveChatTab(innerW, visibleRows int) []string {
 		prevDate := ""
 		prevSender := ""
 
+		var chatID int64
+		if ch != nil {
+			chatID = ch.ChatID
+		}
+		if m.liveLoadingOlder {
+			msgLines = append(msgLines, lipgloss.NewStyle().Foreground(colYellow).Render("  ⏳ Loading older messages..."))
+		} else if dateLabel := m.liveHistoryByDate[chatID]; dateLabel != "" {
+			msgLines = append(msgLines, lipgloss.NewStyle().Foreground(colCyan).Render(
+				fmt.Sprintf("  📅 Viewing history around %s — press G to return to live, P to jump", dateLabel),
+			))
+		} else if m.liveMsgCursor == 0 {
+			if hasMore, known := m.liveHasMore[chatID]; known && !hasMore {
+				msgLines = append(msgLines, lipgloss.NewStyle().Foreground(colMuted).Render("  ── Beginning of chat history ──"))
+			} else {
+				msgLines = append(msgLines, lipgloss.NewStyle().Foreground(colMuted).Render("  ↑ Press k/↑ to load older messages, or P for count/date"))
+			}
+		}
+
 		for idx, lm := range m.liveMessages {
 			isSelected := idx == m.liveMsgCursor
 			msgDate, msgTime := splitDateAndTime(lm.Timestamp)

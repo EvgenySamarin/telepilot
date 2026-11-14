@@ -236,6 +236,89 @@ func (s *Service) FetchRecentMessages(ctx context.Context, chat storage.ChatInfo
 	if limit <= 0 {
 		limit = 50
 	}
+	return s.fetchHistoryPage(ctx, chat, 0, 0, limit)
+}
+
+/*
+FetchOlderMessages loads up to `limit` messages strictly older than `beforeMsgID` in chronological order.
+It batches requests in chunks of 100 (Telegram's per-RPC maximum) up to a safe cap of 1000 messages,
+and reports whether more history is likely available on the server.
+*/
+func (s *Service) FetchOlderMessages(ctx context.Context, chat storage.ChatInfo, beforeMsgID int, limit int) ([]storage.LiveMessage, bool, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
+	authOk, _ := s.CheckAuthorized(ctx)
+	if !authOk {
+		return nil, false, nil
+	}
+
+	var all []storage.LiveMessage
+	offsetID := beforeMsgID
+	hasMore := true
+
+	for len(all) < limit {
+		batchLimit := limit - len(all)
+		if batchLimit > 100 {
+			batchLimit = 100
+		}
+		batch, err := s.fetchHistoryPage(ctx, chat, offsetID, 0, batchLimit)
+		if err != nil {
+			if len(all) > 0 {
+				return sortAndDedupeLiveMessages(all), true, nil
+			}
+			return nil, false, err
+		}
+		if len(batch) == 0 {
+			hasMore = false
+			break
+		}
+		all = append(batch, all...)
+		if len(batch) < batchLimit {
+			hasMore = false
+			break
+		}
+		oldestID := batch[0].MessageID
+		if oldestID <= 1 || oldestID == offsetID {
+			hasMore = false
+			break
+		}
+		offsetID = oldestID
+
+		if len(all) < limit {
+			select {
+			case <-ctx.Done():
+				return sortAndDedupeLiveMessages(all), true, ctx.Err()
+			case <-time.After(150 * time.Millisecond):
+			}
+		}
+	}
+
+	return sortAndDedupeLiveMessages(all), hasMore, nil
+}
+
+/*
+FetchMessagesByDate jumps directly to `targetDate` (end of that local day) in a single RPC
+and returns up to `limit` messages (default 100) in chronological order.
+*/
+func (s *Service) FetchMessagesByDate(ctx context.Context, chat storage.ChatInfo, targetDate time.Time, limit int) ([]storage.LiveMessage, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 100
+	}
+	endOfDay := targetDate.Add(24*time.Hour - time.Second)
+	return s.fetchHistoryPage(ctx, chat, 0, int(endOfDay.Unix()), limit)
+}
+
+func (s *Service) fetchHistoryPage(ctx context.Context, chat storage.ChatInfo, offsetID int, offsetDate int, limit int) ([]storage.LiveMessage, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 100 {
+		limit = 100
+	}
 	authOk, _ := s.CheckAuthorized(ctx)
 	if !authOk {
 		msgs := storage.DemoLiveMessages(chat)
@@ -261,8 +344,8 @@ func (s *Service) FetchRecentMessages(ctx context.Context, chat storage.ChatInfo
 	err := client.Run(cctx, func(ctx context.Context) error {
 		histClass, err := client.API().MessagesGetHistory(ctx, &tg.MessagesGetHistoryRequest{
 			Peer:       chatInputPeer(chat),
-			OffsetID:   0,
-			OffsetDate: 0,
+			OffsetID:   offsetID,
+			OffsetDate: offsetDate,
 			AddOffset:  0,
 			Limit:      limit,
 		})
@@ -349,10 +432,27 @@ func (s *Service) FetchRecentMessages(ctx context.Context, chat storage.ChatInfo
 		return nil, err
 	}
 
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].MessageID < result[j].MessageID
-	})
-	return result, nil
+	return sortAndDedupeLiveMessages(result), nil
+}
+
+func sortAndDedupeLiveMessages(msgs []storage.LiveMessage) []storage.LiveMessage {
+	if len(msgs) <= 1 {
+		return msgs
+	}
+	seen := make(map[int]storage.LiveMessage, len(msgs))
+	var order []int
+	for _, m := range msgs {
+		if _, exists := seen[m.MessageID]; !exists {
+			order = append(order, m.MessageID)
+		}
+		seen[m.MessageID] = m
+	}
+	sort.Ints(order)
+	out := make([]storage.LiveMessage, 0, len(order))
+	for _, id := range order {
+		out = append(out, seen[id])
+	}
+	return out
 }
 
 /*

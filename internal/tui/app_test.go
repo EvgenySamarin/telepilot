@@ -653,3 +653,46 @@ func TestClampViewToTerminal(t *testing.T) {
 		t.Fatalf("expected visual width <= 40, got %d", w)
 	}
 }
+
+func TestStatusLinePositionedAboveBottomBar(t *testing.T) {
+	m := newTestModel(t, "en")
+	m.width = 120
+	m.height = 36
+	m.statusBusy = true
+	m.statusStartedAt = time.Now().Add(-14 * time.Second)
+	m.statusText = "Running AI skill 'rental-statement-consolidator'..."
+
+	if strings.Contains(m.renderTopBar(), m.statusText) {
+		t.Fatalf("expected statusText NOT to appear in top bar, got:\n%s", m.renderTopBar())
+	}
+
+	view := m.View()
+	statusIdx := strings.Index(view, "Running AI skill 'rental-statement-consolidator'...")
+	hotkeysIdx := strings.Index(view, "1-4:Tabs")
+	if statusIdx < 0 || hotkeysIdx < 0 {
+		t.Fatalf("expected both status line and hotkeys bar in View(), got statusIdx=%d hotkeysIdx=%d", statusIdx, hotkeysIdx)
+	}
+	if statusIdx >= hotkeysIdx {
+		t.Fatalf("expected status line (idx=%d) to appear above hotkeys bar (idx=%d)", statusIdx, hotkeysIdx)
+	}
+
+	// Verify spinner advances across ticks and timer displays elapsed / timeout
+	m.marqueeTick = 0
+	line0 := m.renderStatusLine()
+	m.marqueeTick = 1
+	line1 := m.renderStatusLine()
+	if line0 == line1 {
+		t.Errorf("expected spinner frame to advance across ticks, got identical:\n%s", line0)
+	}
+	if !strings.Contains(line0, "⏱") || !strings.Contains(line0, "/ 90s") {
+		t.Errorf("expected timer '⏱ <N>s / 90s' in status line, got:\n%s", line0)
+	}
+
+	// Verify no-timeout timer format
+	m.cfg.AgyNoTimeout = true
+	m.statusStartedAt = time.Now().Add(-65 * time.Second)
+	noTimeoutLine := m.renderStatusLine()
+	if !strings.Contains(noTimeoutLine, "01:05 (∞)") {
+		t.Errorf("expected '01:05 (∞)' in no-timeout status line, got:\n%s", noTimeoutLine)
+	}
+}

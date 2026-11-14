@@ -281,7 +281,8 @@ func (e *Engine) GenerateChatReply(ctx context.Context, chatTitle string, recent
 	var promptBuilder strings.Builder
 	fmt.Fprintf(&promptBuilder, "You are participating on behalf of the user ('You') in the Telegram chat %q.\n", chatTitle)
 	promptBuilder.WriteString(langHint)
-	promptBuilder.WriteString("\n")
+	promptBuilder.WriteString("\n\n")
+	promptBuilder.WriteString(CapabilitiesPrompt(recent, false, false))
 	if strings.TrimSpace(customNotes) != "" {
 		fmt.Fprintf(&promptBuilder, "\nPer-Chat AI Instructions (highest priority):\n%s\n", strings.TrimSpace(customNotes))
 	} else if strings.TrimSpace(skillInstructions) != "" {
@@ -312,8 +313,8 @@ PlanSingleShotInstruction executes a one-off, standalone AI instruction for the 
 (unrelated to summarization or skills) and returns one or more messages (with optional delays) to send.
 */
 func (e *Engine) PlanSingleShotInstruction(ctx context.Context, chatTitle string, recent []storage.LiveMessage, instruction string) ([]SingleShotAction, error) {
-	if len(recent) > 15 {
-		recent = recent[len(recent)-15:]
+	if len(recent) > 1000 {
+		recent = recent[len(recent)-1000:]
 	}
 	var historyLines []string
 	for _, m := range recent {
@@ -333,6 +334,8 @@ func (e *Engine) PlanSingleShotInstruction(ctx context.Context, chatTitle string
 	var promptBuilder strings.Builder
 	fmt.Fprintf(&promptBuilder, "You are executing a standalone single-shot instruction on behalf of the user ('You') in the Telegram chat %q.\n", chatTitle)
 	promptBuilder.WriteString("This is a direct chat action and is NOT a period summarization task.\n\n")
+	promptBuilder.WriteString(CapabilitiesPrompt(recent, true, true))
+	promptBuilder.WriteString("\n")
 	if len(historyLines) > 0 {
 		promptBuilder.WriteString("Recent chat context:\n")
 		promptBuilder.WriteString(strings.Join(historyLines, "\n"))
@@ -351,6 +354,10 @@ Rules:
   [{"text": "<schedule in=\"1m\" repeat=\"1m\" count=\"5\" until=\"5m\">exact message or prompt to send</schedule>", "delay_seconds": 0}]
   Attributes: in, at, repeat, count, until.
   Do NOT include any extra items, delays, or confirmation messages.
+- If the instruction requires older chat history not present in the loaded context:
+  Return EXACTLY ONE item containing ONLY the <load_history> directive and NO chat text, like:
+  [{"text": "<load_history count=\"200\" />", "delay_seconds": 0}]
+  or [{"text": "<load_history date=\"2026-10-15\" />", "delay_seconds": 0}]
 - Output ONLY the raw JSON array without markdown fences or explanations.`)
 
 	res, err := e.callAgyCLI(ctx, promptBuilder.String(), "")
