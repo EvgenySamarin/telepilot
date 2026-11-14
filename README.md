@@ -1,6 +1,7 @@
 # TelePilot (`tgp`)
 
 <p align="center">
+  <a href="https://github.com/EvgenySamarin/telepilot/releases/latest"><img src="https://img.shields.io/github/v/release/EvgenySamarin/telepilot?style=flat-square&logo=github" alt="Latest Release" /></a>
   <a href="https://go.dev/"><img src="https://img.shields.io/badge/Language-Go%201.27+-00ADD8?style=flat-square&logo=go" alt="Go" /></a>
   <a href="https://github.com/charmbracelet/bubbletea"><img src="https://img.shields.io/badge/UI-Charm%20Bubble%20Tea-F25D94?style=flat-square" alt="Bubble Tea" /></a>
   <a href="https://www.apple.com/macos/"><img src="https://img.shields.io/badge/Platform-macOS-grey?style=flat-square&logo=apple" alt="macOS" /></a>
@@ -146,7 +147,22 @@ See [docs/README.md](docs/README.md) for full generated Go API documentation.
 ## 🚀 Quick Start
 
 ### 1. Install `telepilot` (and alias `tgp`)
-Run the installer script once to compile and place `telepilot` and `tgp` into `~/.local/bin`:
+
+#### Option A: Download Latest Release (Recommended)
+Download the prebuilt archive for your platform (`darwin_arm64` for Apple Silicon, `darwin_amd64` for Intel Mac, or `linux_amd64`) from [GitHub Releases](https://github.com/EvgenySamarin/telepilot/releases/latest):
+
+```bash
+# Example for Apple Silicon macOS (replace <TAG> with the release tag, e.g. v0.1.0):
+tar -xzf telepilot_<TAG>_darwin_arm64.tar.gz
+mkdir -p ~/.local/bin
+mv telepilot tgp ~/.local/bin/
+chmod +x ~/.local/bin/telepilot ~/.local/bin/tgp
+```
+
+*(Ensure `~/.local/bin` is in your `PATH`, e.g. `export PATH="$HOME/.local/bin:$PATH"` in `~/.zshrc`.)*
+
+#### Option B: Build from Source
+Run the installer script once to compile from source and place `telepilot` and `tgp` into `~/.local/bin`:
 
 ```bash
 ./install.sh
