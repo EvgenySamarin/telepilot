@@ -24,7 +24,11 @@ import (
 	"telepilot/internal/tui"
 )
 
+var version = "dev"
+
 func main() {
+	versionFlag := flag.Bool("version", false, "Print version and exit")
+	vFlag := flag.Bool("v", false, "Alias for --version")
 	qrFlag := flag.Bool("qr", false, "Log into Telegram by scanning a QR code with your phone")
 	authFlag := flag.Bool("auth", false, "Alias for --qr (Phone QR code login)")
 	testFlag := flag.Bool("test", false, "Run 3-step MTProto connection diagnostic from CLI")
@@ -35,6 +39,11 @@ func main() {
 	notesFlag := flag.String("notes", "", "Extra instructions appended to the summary skill for this run")
 	promptFlag := flag.String("prompt", "", "Deprecated alias for --notes")
 	flag.Parse()
+
+	if *versionFlag || *vFlag {
+		fmt.Printf("telepilot %s\n", version)
+		return
+	}
 
 	cfg := config.Load()
 	if *periodFlag != "" {

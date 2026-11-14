@@ -69,17 +69,28 @@ func (c *AppConfig) SkillsDir() string {
 }
 
 /*
-ResolveProjectRoot determines the project root directory from TELEPILOT_HOME, DefaultProjectDir, or the current working directory.
+ResolveProjectRoot determines the project root directory from TELEPILOT_HOME, a local .env
+in the current working directory, DefaultProjectDir, or ~/.telepilot.
 */
 func ResolveProjectRoot() string {
 	if envHome := strings.TrimSpace(os.Getenv("TELEPILOT_HOME")); envHome != "" {
 		return envHome
 	}
+	cwd, cwdErr := os.Getwd()
+	if cwdErr == nil {
+		if st, err := os.Stat(filepath.Join(cwd, ".env")); err == nil && !st.IsDir() {
+			return cwd
+		}
+	}
 	if st, err := os.Stat(DefaultProjectDir); err == nil && st.IsDir() {
 		return DefaultProjectDir
 	}
-	cwd, err := os.Getwd()
-	if err == nil {
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		appHome := filepath.Join(home, ".telepilot")
+		_ = os.MkdirAll(appHome, 0o755)
+		return appHome
+	}
+	if cwdErr == nil {
 		return cwd
 	}
 	return "."

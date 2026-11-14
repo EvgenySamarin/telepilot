@@ -148,7 +148,14 @@ See [docs/README.md](docs/README.md) for full generated Go API documentation.
 
 ### 1. Install `telepilot` (and alias `tgp`)
 
-#### Option A: Download Latest Release (Recommended)
+#### Option A: Homebrew (Recommended)
+```bash
+brew tap EvgenySamarin/tap
+brew trust evgenysamarin/tap
+brew install telepilot
+```
+
+#### Option B: Download Latest Release
 Download the prebuilt archive for your platform (`darwin_arm64` for Apple Silicon, `darwin_amd64` for Intel Mac, or `linux_amd64`) from [GitHub Releases](https://github.com/EvgenySamarin/telepilot/releases/latest):
 
 ```bash
@@ -161,7 +168,7 @@ chmod +x ~/.local/bin/telepilot ~/.local/bin/tgp
 
 *(Ensure `~/.local/bin` is in your `PATH`, e.g. `export PATH="$HOME/.local/bin:$PATH"` in `~/.zshrc`.)*
 
-#### Option B: Build from Source
+#### Option C: Build from Source
 Run the installer script once to compile from source and place `telepilot` and `tgp` into `~/.local/bin`:
 
 ```bash

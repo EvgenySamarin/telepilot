@@ -50,10 +50,10 @@ jobs:
             GOARCH="${target#*/}"
             STAGE="dist/stage_${GOOS}_${GOARCH}"
             mkdir -p "$STAGE"
-            GOOS="$GOOS" GOARCH="$GOARCH" go build -trimpath -ldflags="-s -w" -o "$STAGE/telepilot" ./cmd/tgp
+            GOOS="$GOOS" GOARCH="$GOARCH" go build -trimpath -ldflags="-s -w -X main.version=${TAG#v}" -o "$STAGE/telepilot" ./cmd/tgp
             cp "$STAGE/telepilot" "$STAGE/tgp"
-            cp README.md "$STAGE/"
-            tar -C "$STAGE" -czf "dist/telepilot_${TAG}_${GOOS}_${GOARCH}.tar.gz" telepilot tgp README.md
+            cp README.md LICENSE "$STAGE/"
+            tar -C "$STAGE" -czf "dist/telepilot_${TAG}_${GOOS}_${GOARCH}.tar.gz" telepilot tgp README.md LICENSE
             rm -rf "$STAGE"
           done
           (cd dist && sha256sum *.tar.gz > checksums.txt)
