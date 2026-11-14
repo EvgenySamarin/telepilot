@@ -316,7 +316,7 @@ func (m *Model) renderRePromptTab(rec *storage.SkillOutputRecord, innerW int) []
 			// Total non-desc width: prefix(2) + activeBadge(10) + space(1) + nameW + space(1) + kindW + space(1)
 			fixedW := 2 + 10 + 1 + nameW + 1 + kindW + 1
 			descW := maxInt(10, innerTextW-fixedW)
-			isSkillActive := m.activeTab == 2 && idx == m.skillCursor && (inSkillsBox || m.tab2BoxCursor == 3 || m.focus == focusMain)
+			isSkillActive := m.activeTab == 2 && (isChatActiveSkill || (idx == m.skillCursor && (inSkillsBox || m.tab2BoxCursor == 3 || m.focus == focusMain)))
 			desc := renderRunningLine(sk.Description, descW, isSkillActive, m.marqueeTick)
 
 			row := fmt.Sprintf("%s%s %s %s %s", prefix, activeBadge, nameStr, kindBadge, desc)

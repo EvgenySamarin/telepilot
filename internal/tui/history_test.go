@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"telepilot/internal/skills"
 	"telepilot/internal/storage"
 )
 
@@ -208,5 +209,66 @@ func TestPersistentHistorySurvivesRestart(t *testing.T) {
 	}
 	if hasMore, known := m2.liveHasMore[ch.ChatID]; !known || hasMore {
 		t.Fatalf("expected persisted liveHasMore=false after restart, got known=%v hasMore=%v", known, hasMore)
+	}
+}
+
+func TestSkillsLibrarySingleLineAndActiveMarquee(t *testing.T) {
+	m := newHistoryTestModel(t)
+	m.activeTab = 2
+	m.focus = focusMain
+	ch := m.activeChat()
+	m.skillList = []skills.Skill{
+		{
+			Name:        "rental-statement-consolidator",
+			Kind:        skills.KindSummary,
+			Description: "Consolidates verified residential rental charges and utility bills over a 35-day rolling window",
+		},
+		{
+			Name:        "image-describe",
+			Kind:        skills.KindMedia,
+			Media:       []string{"image", "sticker"},
+			Description: "Describe photos, screenshots, diagrams, and stickers in detail",
+		},
+	}
+	m.chatAIConfigs[ch.ChatID] = storage.ChatAIConfig{
+		Enabled: true,
+		Skill:   "rental-statement-consolidator",
+	}
+	// Cursor is on skill 1, while skill 0 is [ACTIVE]
+	m.skillCursor = 1
+	m.marqueeTick = 0
+	lines0 := m.renderRePromptTab(nil, 90)
+	m.marqueeTick = 10
+	lines10 := m.renderRePromptTab(nil, 90)
+
+	// Verify each skill row appears on a single line (no wrapped tail lines)
+	joined0 := strings.Join(lines0, "\n")
+	joined10 := strings.Join(lines10, "\n")
+	if strings.Count(joined0, "\n") != strings.Count(joined10, "\n") {
+		t.Fatalf("expected identical line count across marquee ticks")
+	}
+	// Verify [ACTIVE] skill row inside Box 3 animates even when cursor is on another skill
+	b3Start, b3End := m.tab2BoxBounds[3][0], m.tab2BoxBounds[3][1]
+	var row0Tick0, row0Tick10 string
+	for _, l := range lines0[b3Start:b3End] {
+		if strings.Contains(l, "[ACTIVE]") {
+			row0Tick0 = l
+			break
+		}
+	}
+	for _, l := range lines10[b3Start:b3End] {
+		if strings.Contains(l, "[ACTIVE]") {
+			row0Tick10 = l
+			break
+		}
+	}
+	if row0Tick0 == "" || row0Tick10 == "" || row0Tick0 == row0Tick10 {
+		t.Fatalf("expected [ACTIVE] skill row to animate marquee even when not selected:\n  tick0:  %q\n  tick10: %q", row0Tick0, row0Tick10)
+	}
+	// Verify no orphaned single-word wrap line inside Box 3
+	// 2 skill rows + 1 blank + 1 footer + 2 borders + 1 title = 7 lines
+	if b3End-b3Start > 8 {
+		t.Fatalf("expected Skills Library box to have single-line rows (got %d lines):\n%s",
+			b3End-b3Start, strings.Join(lines0[b3Start:b3End], "\n"))
 	}
 }

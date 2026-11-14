@@ -502,7 +502,7 @@ func renderNavBox(isSelectedBox, isEnteredBox bool, title string, body string, c
 		Border(lipgloss.NormalBorder()).
 		BorderForeground(borderCol).
 		Padding(0, 1).
-		Width(innerTextW).
+		Width(innerTextW + 2).
 		Render(strings.Join(paddedLines, "\n"))
 
 	var out []string

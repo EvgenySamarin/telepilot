@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"telepilot/internal/config"
 )
@@ -245,12 +246,23 @@ func SaveChatSkillOutputs(dataDir string, outputs map[int64]SkillOutputRecord) e
 			continue
 		}
 		slug := config.Slugify(rec.ChatTitle)
-		mdPath := filepath.Join(outputsDir, fmt.Sprintf("%s_output.md", slug))
+		dateSlug, timeSlug := skillOutputDateAndTimeSlug(rec.CreatedAt)
+		mdPath := rec.OutputPath
+		if strings.TrimSpace(mdPath) == "" {
+			chatOutDir := filepath.Join(outputsDir, slug)
+			_ = os.MkdirAll(chatOutDir, 0o755)
+			mdPath = filepath.Join(chatOutDir, fmt.Sprintf("%s-output.md", dateSlug))
+			if _, statErr := os.Stat(mdPath); statErr == nil {
+				mdPath = filepath.Join(chatOutDir, fmt.Sprintf("%s-%s-output.md", dateSlug, timeSlug))
+			}
+		}
 		mdContent := fmt.Sprintf("# AI Skill Output: %s\n\n- **Skill**: %s (%s)\n- **Model**: %s\n- **Messages Analyzed**: %d\n- **Generated At**: %s\n\n---\n\n%s\n",
 			rec.ChatTitle, rec.Skill, rec.SkillHash, rec.ModelUsed, rec.MessageCount, rec.CreatedAt, rec.Output)
-		if err := os.WriteFile(mdPath, []byte(mdContent), 0o644); err == nil {
-			rec.OutputPath = mdPath
-			outputs[chatID] = rec
+		if _, statErr := os.Stat(mdPath); os.IsNotExist(statErr) || mdPath != rec.OutputPath {
+			if err := os.WriteFile(mdPath, []byte(mdContent), 0o644); err == nil {
+				rec.OutputPath = mdPath
+				outputs[chatID] = rec
+			}
 		}
 		list = append(list, rec)
 	}
@@ -262,6 +274,18 @@ func SaveChatSkillOutputs(dataDir string, outputs map[int64]SkillOutputRecord) e
 		return err
 	}
 	return os.WriteFile(ChatSkillOutputsFilePath(dataDir), bytes, 0o644)
+}
+
+func skillOutputDateAndTimeSlug(createdAt string) (string, string) {
+	s := strings.TrimSpace(createdAt)
+	for _, layout := range []string{"2006-01-02 15:04:05 UTC", "2006-01-02 15:04:05", time.RFC3339} {
+		if t, err := time.Parse(layout, s); err == nil {
+			lt := t.Local()
+			return lt.Format("20060102"), lt.Format("150405")
+		}
+	}
+	now := time.Now().Local()
+	return now.Format("20060102"), now.Format("150405")
 }
 
 /*
