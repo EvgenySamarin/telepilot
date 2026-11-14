@@ -1,10 +1,10 @@
 # TelePilot (`tgp`)
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Language-Go%201.24+-00ADD8?style=flat-square&logo=go" alt="Go" />
-  <img src="https://img.shields.io/badge/UI-Charm%20Bubble%20Tea-F25D94?style=flat-square" alt="Bubble Tea" />
-  <img src="https://img.shields.io/badge/Platform-macOS-grey?style=flat-square&logo=apple" alt="macOS" />
-  <img src="https://img.shields.io/badge/License-MIT-blue?style=flat-square" alt="License" />
+  <a href="https://go.dev/"><img src="https://img.shields.io/badge/Language-Go%201.27+-00ADD8?style=flat-square&logo=go" alt="Go" /></a>
+  <a href="https://github.com/charmbracelet/bubbletea"><img src="https://img.shields.io/badge/UI-Charm%20Bubble%20Tea-F25D94?style=flat-square" alt="Bubble Tea" /></a>
+  <a href="https://www.apple.com/macos/"><img src="https://img.shields.io/badge/Platform-macOS-grey?style=flat-square&logo=apple" alt="macOS" /></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-blue?style=flat-square" alt="License" /></a>
 </p>
 
 <p align="center">
@@ -116,10 +116,27 @@ data/
 ├── decisions-log/
 ├── document-summarize/
 ├── image-describe/
+├── media-fallback/
 ├── period-summary/
 ├── standup-digest/
 ├── video-describe/
 └── voice-transcribe/
+```
+
+### Go Package Layout
+```text
+cmd/
+├── tgp/                     # Primary CLI & TUI entrypoint (telepilot / tgp)
+└── screens/                 # Headless SVG screenshot generator for assets/
+
+internal/
+├── ai/                      # Antigravity (agy) CLI wrapper, skill runner & schedule parser
+├── config/                  # .env & runtime AppConfig loader/persister
+├── i18n/                    # EN / RU UI localization
+├── mtproto/                 # Telegram gotd/td client, QR auth, live sync & media download
+├── skills/                  # Bundled default skills & SKILL.md loader/importer
+├── storage/                 # Domain models & JSON/Markdown persistence
+└── tui/                     # Bubble Tea Model, views, modals, key handlers & tests
 ```
 
 ---
