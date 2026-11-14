@@ -20,7 +20,10 @@ func TestFavoriteChatsStorage(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	// 1. Loading from empty dir returns empty slice
-	favs := LoadFavoriteChats(tempDir)
+	favs, err := LoadFavoriteChats(tempDir)
+	if err != nil {
+		t.Fatalf("unexpected error loading empty favorite chats: %v", err)
+	}
 	if len(favs) != 0 {
 		t.Errorf("expected 0 favorite chats initially, got %d", len(favs))
 	}
@@ -40,7 +43,10 @@ func TestFavoriteChatsStorage(t *testing.T) {
 	}
 
 	// 3. Load back
-	loaded := LoadFavoriteChats(tempDir)
+	loaded, err := LoadFavoriteChats(tempDir)
+	if err != nil {
+		t.Fatalf("failed to load favorite chats: %v", err)
+	}
 	if len(loaded) != 2 {
 		t.Fatalf("expected 2 loaded favorite chats, got %d", len(loaded))
 	}
@@ -55,7 +61,10 @@ func TestFavoriteChatsStorage(t *testing.T) {
 	if err := SaveFavoriteChats(tempDir, []FavoriteChatRecord{}); err != nil {
 		t.Fatalf("failed to save empty list: %v", err)
 	}
-	loadedEmpty := LoadFavoriteChats(tempDir)
+	loadedEmpty, err := LoadFavoriteChats(tempDir)
+	if err != nil {
+		t.Fatalf("failed to load empty favorite chats: %v", err)
+	}
 	if len(loadedEmpty) != 0 {
 		t.Errorf("expected 0 records after saving empty list, got %d", len(loadedEmpty))
 	}
@@ -69,7 +78,10 @@ func TestHiddenChatsStorage(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	// 1. Loading from empty dir returns empty slice
-	hidden := LoadHiddenChats(tempDir)
+	hidden, err := LoadHiddenChats(tempDir)
+	if err != nil {
+		t.Fatalf("unexpected error loading empty hidden chats: %v", err)
+	}
 	if len(hidden) != 0 {
 		t.Errorf("expected 0 hidden chats initially, got %d", len(hidden))
 	}
@@ -88,7 +100,10 @@ func TestHiddenChatsStorage(t *testing.T) {
 	}
 
 	// 3. Load back
-	loaded := LoadHiddenChats(tempDir)
+	loaded, err := LoadHiddenChats(tempDir)
+	if err != nil {
+		t.Fatalf("failed to load hidden chats: %v", err)
+	}
 	if len(loaded) != 2 {
 		t.Fatalf("expected 2 loaded hidden chats, got %d", len(loaded))
 	}
@@ -100,7 +115,10 @@ func TestHiddenChatsStorage(t *testing.T) {
 	if err := SaveHiddenChats(tempDir, []HiddenChatRecord{}); err != nil {
 		t.Fatalf("failed to save empty list: %v", err)
 	}
-	loadedEmpty := LoadHiddenChats(tempDir)
+	loadedEmpty, err := LoadHiddenChats(tempDir)
+	if err != nil {
+		t.Fatalf("failed to load empty hidden chats: %v", err)
+	}
 	if len(loadedEmpty) != 0 {
 		t.Errorf("expected 0 records after saving empty list, got %d", len(loadedEmpty))
 	}
@@ -114,7 +132,10 @@ func TestScheduledTasksStorage(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	// 1. Loading from empty dir returns empty slice
-	tasks := LoadScheduledTasks(tempDir)
+	tasks, err := LoadScheduledTasks(tempDir)
+	if err != nil {
+		t.Fatalf("unexpected error loading empty scheduled tasks: %v", err)
+	}
 	if len(tasks) != 0 {
 		t.Errorf("expected 0 scheduled tasks initially, got %d", len(tasks))
 	}
@@ -150,7 +171,10 @@ func TestScheduledTasksStorage(t *testing.T) {
 	}
 
 	// 3. Load back
-	loaded := LoadScheduledTasks(tempDir)
+	loaded, err := LoadScheduledTasks(tempDir)
+	if err != nil {
+		t.Fatalf("failed to load scheduled tasks: %v", err)
+	}
 	if len(loaded) != 2 {
 		t.Fatalf("expected 2 loaded scheduled tasks, got %d", len(loaded))
 	}
@@ -165,7 +189,10 @@ func TestScheduledTasksStorage(t *testing.T) {
 	if err := SaveScheduledTasks(tempDir, []ScheduledTask{}); err != nil {
 		t.Fatalf("failed to save empty list: %v", err)
 	}
-	loadedEmpty := LoadScheduledTasks(tempDir)
+	loadedEmpty, err := LoadScheduledTasks(tempDir)
+	if err != nil {
+		t.Fatalf("failed to load empty scheduled tasks: %v", err)
+	}
 	if len(loadedEmpty) != 0 {
 		t.Errorf("expected 0 records after saving empty list, got %d", len(loadedEmpty))
 	}

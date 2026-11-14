@@ -8,6 +8,7 @@ package storage
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,6 +17,24 @@ import (
 
 	"telepilot/internal/config"
 )
+
+func loadJSONSlice[T any](path string) ([]T, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("read %s: %w", filepath.Base(path), err)
+	}
+	if len(strings.TrimSpace(string(data))) == 0 {
+		return nil, nil
+	}
+	var list []T
+	if err := json.Unmarshal(data, &list); err != nil {
+		return nil, fmt.Errorf("parse %s: %w", filepath.Base(path), err)
+	}
+	return list, nil
+}
 
 /*
 ChatAIConfigFilePath returns the JSON file path for per-chat AI configuration.
@@ -48,17 +67,8 @@ func ScheduledTasksFilePath(dataDir string) string {
 /*
 LoadScheduledTasks reads persisted scheduled tasks from disk, returning an empty slice if none exist.
 */
-func LoadScheduledTasks(dataDir string) []ScheduledTask {
-	path := ScheduledTasksFilePath(dataDir)
-	data, err := os.ReadFile(path)
-	if err != nil || len(data) == 0 {
-		return nil
-	}
-	var list []ScheduledTask
-	if err := json.Unmarshal(data, &list); err == nil {
-		return list
-	}
-	return nil
+func LoadScheduledTasks(dataDir string) ([]ScheduledTask, error) {
+	return loadJSONSlice[ScheduledTask](ScheduledTasksFilePath(dataDir))
 }
 
 /*
@@ -81,17 +91,8 @@ func SaveScheduledTasks(dataDir string, tasks []ScheduledTask) error {
 /*
 LoadFavoriteChats reads persisted favourite chat records from disk.
 */
-func LoadFavoriteChats(dataDir string) []FavoriteChatRecord {
-	path := FavoriteChatsFilePath(dataDir)
-	data, err := os.ReadFile(path)
-	if err != nil || len(data) == 0 {
-		return nil
-	}
-	var list []FavoriteChatRecord
-	if err := json.Unmarshal(data, &list); err == nil {
-		return list
-	}
-	return nil
+func LoadFavoriteChats(dataDir string) ([]FavoriteChatRecord, error) {
+	return loadJSONSlice[FavoriteChatRecord](FavoriteChatsFilePath(dataDir))
 }
 
 /*
@@ -114,17 +115,8 @@ func SaveFavoriteChats(dataDir string, favs []FavoriteChatRecord) error {
 /*
 LoadHiddenChats reads persisted hidden chat records from disk.
 */
-func LoadHiddenChats(dataDir string) []HiddenChatRecord {
-	path := HiddenChatsFilePath(dataDir)
-	data, err := os.ReadFile(path)
-	if err != nil || len(data) == 0 {
-		return nil
-	}
-	var list []HiddenChatRecord
-	if err := json.Unmarshal(data, &list); err == nil {
-		return list
-	}
-	return nil
+func LoadHiddenChats(dataDir string) ([]HiddenChatRecord, error) {
+	return loadJSONSlice[HiddenChatRecord](HiddenChatsFilePath(dataDir))
 }
 
 /*
@@ -147,12 +139,18 @@ func SaveHiddenChats(dataDir string, hidden []HiddenChatRecord) error {
 /*
 LoadChatAIConfigs reads per-chat AI configurations from disk keyed by chat ID.
 */
-func LoadChatAIConfigs(dataDir string) map[int64]ChatAIConfig {
+func LoadChatAIConfigs(dataDir string) (map[int64]ChatAIConfig, error) {
 	out := make(map[int64]ChatAIConfig)
 	path := ChatAIConfigFilePath(dataDir)
 	data, err := os.ReadFile(path)
-	if err != nil || len(data) == 0 {
-		return out
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return out, nil
+		}
+		return out, fmt.Errorf("read %s: %w", filepath.Base(path), err)
+	}
+	if len(strings.TrimSpace(string(data))) == 0 {
+		return out, nil
 	}
 	var list []ChatAIConfig
 	if err := json.Unmarshal(data, &list); err == nil {
@@ -161,15 +159,16 @@ func LoadChatAIConfigs(dataDir string) map[int64]ChatAIConfig {
 				out[item.ChatID] = item
 			}
 		}
-		return out
+		return out, nil
 	}
 	var byID map[int64]ChatAIConfig
-	if err := json.Unmarshal(data, &byID); err == nil {
-		for k, v := range byID {
-			out[k] = v
-		}
+	if err := json.Unmarshal(data, &byID); err != nil {
+		return out, fmt.Errorf("parse %s: %w", filepath.Base(path), err)
 	}
-	return out
+	for k, v := range byID {
+		out[k] = v
+	}
+	return out, nil
 }
 
 /*
@@ -205,23 +204,29 @@ func ChatSkillOutputsFilePath(dataDir string) string {
 /*
 LoadChatSkillOutputs reads per-chat skill output records from disk keyed by chat ID.
 */
-func LoadChatSkillOutputs(dataDir string) map[int64]SkillOutputRecord {
+func LoadChatSkillOutputs(dataDir string) (map[int64]SkillOutputRecord, error) {
 	out := make(map[int64]SkillOutputRecord)
 	path := ChatSkillOutputsFilePath(dataDir)
 	data, err := os.ReadFile(path)
-	if err != nil || len(data) == 0 {
-		return out
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return out, nil
+		}
+		return out, fmt.Errorf("read %s: %w", filepath.Base(path), err)
+	}
+	if len(strings.TrimSpace(string(data))) == 0 {
+		return out, nil
 	}
 	var list []SkillOutputRecord
-	if err := json.Unmarshal(data, &list); err == nil {
-		for _, item := range list {
-			if item.ChatID != 0 {
-				out[item.ChatID] = item
-			}
-		}
-		return out
+	if err := json.Unmarshal(data, &list); err != nil {
+		return out, fmt.Errorf("parse %s: %w", filepath.Base(path), err)
 	}
-	return out
+	for _, item := range list {
+		if item.ChatID != 0 {
+			out[item.ChatID] = item
+		}
+	}
+	return out, nil
 }
 
 /*

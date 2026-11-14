@@ -181,13 +181,20 @@ func NewModel(cfg *config.AppConfig, aiEngine AIEngine, mtSvc TelegramClient, fo
 	rawChats := make([]storage.ChatInfo, len(storage.DemoChats))
 	copy(rawChats, storage.DemoChats)
 
-	favChats := storage.LoadFavoriteChats(cfg.DataDir)
+	var initWarnings []string
+	favChats, err := storage.LoadFavoriteChats(cfg.DataDir)
+	if err != nil {
+		initWarnings = append(initWarnings, fmt.Sprintf("Failed to load favorite chats: %v", err))
+	}
 	favIDs := make(map[int64]bool, len(favChats))
 	for _, f := range favChats {
 		favIDs[f.ChatID] = true
 	}
 
-	hiddenChats := storage.LoadHiddenChats(cfg.DataDir)
+	hiddenChats, err := storage.LoadHiddenChats(cfg.DataDir)
+	if err != nil {
+		initWarnings = append(initWarnings, fmt.Sprintf("Failed to load hidden chats: %v", err))
+	}
 	hiddenIDs := make(map[int64]bool, len(hiddenChats))
 	for _, h := range hiddenChats {
 		hiddenIDs[h.ChatID] = true
@@ -208,9 +215,18 @@ func NewModel(cfg *config.AppConfig, aiEngine AIEngine, mtSvc TelegramClient, fo
 		initLiveMsgs = storage.DemoLiveMessages(chats[0])
 	}
 
-	chatAICfgs := storage.LoadChatAIConfigs(cfg.DataDir)
-	skillOutputs := storage.LoadChatSkillOutputs(cfg.DataDir)
-	schedTasks := storage.LoadScheduledTasks(cfg.DataDir)
+	chatAICfgs, err := storage.LoadChatAIConfigs(cfg.DataDir)
+	if err != nil {
+		initWarnings = append(initWarnings, fmt.Sprintf("Failed to load chat AI configs: %v", err))
+	}
+	skillOutputs, err := storage.LoadChatSkillOutputs(cfg.DataDir)
+	if err != nil {
+		initWarnings = append(initWarnings, fmt.Sprintf("Failed to load skill outputs: %v", err))
+	}
+	schedTasks, err := storage.LoadScheduledTasks(cfg.DataDir)
+	if err != nil {
+		initWarnings = append(initWarnings, fmt.Sprintf("Failed to load scheduled tasks: %v", err))
+	}
 	if forceDemo && len(skillOutputs) == 0 {
 		for _, c := range chats {
 			skillOutputs[c.ChatID] = storage.DemoSkillOutput(c, cfg.Language)
@@ -309,6 +325,9 @@ func NewModel(cfg *config.AppConfig, aiEngine AIEngine, mtSvc TelegramClient, fo
 
 	m.addTrace(fmt.Sprintf("TelePilot Go TUI initialized (root=%s, model=%s)", cfg.ProjectRoot, cfg.ActiveModelLabel()))
 	m.addTrace(fmt.Sprintf("Configured MTProto server: %s (DC %d, api_id=%d)", serverStr, cfg.TelegramDCID, cfg.TelegramAPIID))
+	for _, w := range initWarnings {
+		m.addTrace(w)
+	}
 	return m
 }
 

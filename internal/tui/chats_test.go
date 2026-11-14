@@ -92,7 +92,10 @@ func TestSingleChatSelectionAndPerChatAIConfig(t *testing.T) {
 	}
 
 	// Verify persistence to disk (data/chat_ai_config.json)
-	loadedCfgs := storage.LoadChatAIConfigs(m.cfg.DataDir)
+	loadedCfgs, err := storage.LoadChatAIConfigs(m.cfg.DataDir)
+	if err != nil {
+		t.Fatalf("LoadChatAIConfigs failed: %v", err)
+	}
 	if !loadedCfgs[secondChatID].Enabled {
 		t.Errorf("expected chat AI config for %d to be persisted in data/chat_ai_config.json", secondChatID)
 	}
@@ -347,7 +350,10 @@ func TestFavoriteChatsPinningAndPersistence(t *testing.T) {
 	}
 
 	// Verify persistence in dataDir
-	saved := storage.LoadFavoriteChats(m.cfg.DataDir)
+	saved, err := storage.LoadFavoriteChats(m.cfg.DataDir)
+	if err != nil {
+		t.Fatalf("LoadFavoriteChats failed: %v", err)
+	}
 	if len(saved) != 1 || saved[0].ChatID != targetID {
 		t.Errorf("expected persisted favorite chat %d, got %v", targetID, saved)
 	}
@@ -398,7 +404,10 @@ func TestFavoriteChatsPinningAndPersistence(t *testing.T) {
 	if len(m.favoriteChats) != 1 {
 		t.Errorf("expected 1 favorite chat remaining, got %d", len(m.favoriteChats))
 	}
-	savedAfterUnpin := storage.LoadFavoriteChats(m.cfg.DataDir)
+	savedAfterUnpin, err := storage.LoadFavoriteChats(m.cfg.DataDir)
+	if err != nil {
+		t.Fatalf("LoadFavoriteChats failed: %v", err)
+	}
 	if len(savedAfterUnpin) != 1 || savedAfterUnpin[0].ChatID != secondID {
 		t.Errorf("expected only chat %d persisted, got %v", secondID, savedAfterUnpin)
 	}
@@ -496,7 +505,10 @@ func TestFavoriteChatsConfigWindowManagementAndDeletedCornerCases(t *testing.T) 
 	}
 
 	// Check persistence
-	persisted := storage.LoadFavoriteChats(m.cfg.DataDir)
+	persisted, err := storage.LoadFavoriteChats(m.cfg.DataDir)
+	if err != nil {
+		t.Fatalf("LoadFavoriteChats failed: %v", err)
+	}
 	if len(persisted) != 1 || persisted[0].ChatID != activeChatID {
 		t.Errorf("persisted favorite chats should only have activeChatID, got %v", persisted)
 	}
@@ -572,7 +584,10 @@ func TestHiddenChatsExclusionAndNotice(t *testing.T) {
 	}
 
 	// Check persistence
-	persisted := storage.LoadHiddenChats(m.cfg.DataDir)
+	persisted, err := storage.LoadHiddenChats(m.cfg.DataDir)
+	if err != nil {
+		t.Fatalf("LoadHiddenChats failed: %v", err)
+	}
 	if len(persisted) != 1 || persisted[0].ChatID != targetChat.ChatID {
 		t.Errorf("persisted hidden chats mismatch: %+v", persisted)
 	}
@@ -656,7 +671,10 @@ func TestHiddenChatsConfigModalRestore(t *testing.T) {
 	}
 
 	// Check persistence
-	persisted := storage.LoadHiddenChats(m.cfg.DataDir)
+	persisted, err := storage.LoadHiddenChats(m.cfg.DataDir)
+	if err != nil {
+		t.Fatalf("LoadHiddenChats failed: %v", err)
+	}
 	if len(persisted) != 0 {
 		t.Errorf("expected 0 persisted hidden chats after unhide, got %d", len(persisted))
 	}
