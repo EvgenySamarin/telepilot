@@ -19,16 +19,40 @@ import (
 
 	"telepilot/internal/ai"
 	"telepilot/internal/config"
+	"telepilot/internal/i18n"
 	"telepilot/internal/skills"
 	"telepilot/internal/storage"
-	"telepilot/internal/mtproto"
-	"telepilot/internal/i18n"
 )
+
+/*
+AIEngine defines the AI operations required by the TUI, decoupling it from the concrete CLI engine.
+*/
+type AIEngine interface {
+	GenerateChatReply(ctx context.Context, chatTitle string, recent []storage.LiveMessage, skillName string, customNotes string) (string, error)
+	TestConnection(ctx context.Context) (bool, string)
+	PlanSingleShotInstruction(ctx context.Context, chatTitle string, recent []storage.LiveMessage, instruction string) ([]ai.SingleShotAction, error)
+	GenerateScheduledTaskMessage(ctx context.Context, chatTitle string, recent []storage.LiveMessage, taskPrompt string) (string, error)
+	ExecuteChatSkill(ctx context.Context, chat storage.ChatInfo, skillName string, customNotes string, recent []storage.LiveMessage) (storage.SkillOutputRecord, error)
+}
+
+/*
+TelegramClient defines the Telegram operations required by the TUI, decoupling it from MTProto details.
+*/
+type TelegramClient interface {
+	StartLiveStream(ctx context.Context, onNewMessage func(chatID int64, msg storage.LiveMessage))
+	CheckAuthorized(ctx context.Context) (bool, string)
+	ListDialogs(ctx context.Context, limit int) ([]storage.ChatInfo, error)
+	FetchRecentMessages(ctx context.Context, chat storage.ChatInfo, limit int) ([]storage.LiveMessage, error)
+	SendMessage(ctx context.Context, chat storage.ChatInfo, text string) (storage.LiveMessage, error)
+	DownloadMessageMedia(ctx context.Context, chat storage.ChatInfo, msg storage.LiveMessage) (string, error)
+	TestConnection(ctx context.Context, onUpdate func(lines []string)) (bool, []string)
+	RunQRLogin(ctx context.Context, onQR func(qrArt, loginURL, pngPath string), onStatus func(status string)) (string, error)
+}
 
 type Model struct {
 	cfg     *config.AppConfig
-	ai      *ai.Engine
-	mtproto *mtproto.Service
+	ai      AIEngine
+	mtproto TelegramClient
 
 	width  int
 	height int
@@ -153,7 +177,7 @@ func (m *Model) T(key string, args ...any) string {
 /*
 NewModel initializes the TUI Model with loaded configs, skills, chats, and runtime state.
 */
-func NewModel(cfg *config.AppConfig, aiEngine *ai.Engine, mtSvc *mtproto.Service, forceDemo bool) *Model {
+func NewModel(cfg *config.AppConfig, aiEngine AIEngine, mtSvc TelegramClient, forceDemo bool) *Model {
 	rawChats := make([]storage.ChatInfo, len(storage.DemoChats))
 	copy(rawChats, storage.DemoChats)
 
