@@ -12,6 +12,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -126,7 +127,7 @@ func (s *Service) TestConnection(ctx context.Context, onUpdate func(lines []stri
 	if port <= 0 {
 		port = 443
 	}
-	addr := fmt.Sprintf("%s:%d", ip, port)
+	addr := net.JoinHostPort(ip, strconv.Itoa(port))
 
 	// Step 1/3: Raw TCP socket connectivity
 	t0 := time.Now()
