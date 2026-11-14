@@ -60,6 +60,9 @@ var AllMediaKinds = []string{
 	MediaVoice, MediaVideoNote, MediaAudio, MediaVideo, MediaImage, MediaSticker, MediaDocument,
 }
 
+/*
+Skill represents a parsed Markdown AI skill loaded from .agents/skills/<name>/SKILL.md.
+*/
 type Skill struct {
 	Name        string
 	Description string

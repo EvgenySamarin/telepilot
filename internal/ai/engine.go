@@ -20,6 +20,10 @@ import (
 	"telepilot/internal/storage"
 )
 
+/*
+Engine wraps the Antigravity (agy) CLI to execute AI skill prompts, auto-replies,
+single-shot instruction planning, and scheduled task generation.
+*/
 type Engine struct {
 	cfg *config.AppConfig
 }

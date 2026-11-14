@@ -24,6 +24,10 @@ import (
 	"telepilot/internal/config"
 )
 
+/*
+Service manages Telegram MTProto client connections, authentication, dialog sync,
+live messaging, and historical archive exports.
+*/
 type Service struct {
 	cfg *config.AppConfig
 	ai  *ai.Engine

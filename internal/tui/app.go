@@ -49,6 +49,9 @@ type TelegramClient interface {
 	RunQRLogin(ctx context.Context, onQR func(qrArt, loginURL, pngPath string), onStatus func(status string)) (string, error)
 }
 
+/*
+Model holds the complete Bubble Tea application state for TelePilot's terminal UI.
+*/
 type Model struct {
 	cfg     *config.AppConfig
 	ai      AIEngine

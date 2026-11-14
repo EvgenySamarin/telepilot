@@ -18,8 +18,14 @@ import (
 	"time"
 )
 
+/*
+DefaultProjectDir is the fallback project root directory used when TELEPILOT_HOME is unset.
+*/
 const DefaultProjectDir = "/Users/ey.samarin/coding/telegram-ai-client"
 
+/*
+AppConfig holds resolved application settings loaded from .env and environment variables.
+*/
 type AppConfig struct {
 	ProjectRoot        string
 	TelegramAPIID      int

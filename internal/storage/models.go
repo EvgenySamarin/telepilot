@@ -8,6 +8,9 @@ package storage
 
 import "time"
 
+/*
+ChatInfo represents metadata for a Telegram dialog (group, channel, or direct message).
+*/
 type ChatInfo struct {
 	ChatID      int64  `json:"chat_id"`
 	AccessHash  int64  `json:"access_hash"`
@@ -49,6 +52,9 @@ type ScheduledTask struct {
 	CreatedAt   time.Time  `json:"created_at"`
 }
 
+/*
+MediaItemRecord represents a downloaded voice note, image, or document extracted during a period export.
+*/
 type MediaItemRecord struct {
 	MessageID     int    `json:"message_id"`
 	MediaType     string `json:"media_type"` // "voice" | "image" | "document"
@@ -65,6 +71,9 @@ type MediaItemRecord struct {
 	SkillHash     string `json:"skill_hash,omitempty"` // hash of that skill's SKILL.md at analysis time
 }
 
+/*
+MessageRecord represents a single archived Telegram message with optional media analysis and deep link.
+*/
 type MessageRecord struct {
 	MessageID       int    `json:"message_id"`
 	Sender          string `json:"sender"`
@@ -78,6 +87,9 @@ type MessageRecord struct {
 	DeepLink        string `json:"deep_link"`
 }
 
+/*
+PeriodSummaryRecord holds metadata, counts, media items, and generated markdown for a chat period summary run.
+*/
 type PeriodSummaryRecord struct {
 	FolderPath         string            `json:"folder_path"`
 	ChatID             int64             `json:"chat_id"`

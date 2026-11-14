@@ -348,6 +348,9 @@ func DemoLiveMessages(chat ChatInfo) []LiveMessage {
 	}
 }
 
+/*
+DemoChats provides built-in sample Telegram dialogs used in offline demo mode.
+*/
 var DemoChats = []ChatInfo{
 	{ChatID: -1001849201, Title: "Core Backend & Infra", ChatType: "group", UnreadCount: 14},
 	{ChatID: -1001928374, Title: "Product Design & Specs", ChatType: "group", UnreadCount: 6},
