@@ -527,8 +527,8 @@ func (s *Service) DownloadMessageMedia(ctx context.Context, chat storage.ChatInf
 	}
 
 	cacheDir := s.liveCacheDir(chat.ChatID)
-	fileName := msg.MediaFileName
-	if fileName == "" {
+	fileName := filepath.Base(strings.TrimSpace(msg.MediaFileName))
+	if fileName == "" || fileName == "." || fileName == ".." {
 		fileName = fmt.Sprintf("media_msg%d.bin", msg.MessageID)
 	}
 	targetPath := filepath.Join(cacheDir, fileName)

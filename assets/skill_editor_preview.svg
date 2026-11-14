@@ -19,41 +19,41 @@
     <circle cx="56" cy="18" r="6" fill="#9ece6a"/>
     <!-- Window Title -->
     <text x="512.8" y="22" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" fill="#7aa2f7" font-weight="600" text-anchor="middle">telepilot — In-TUI Skill Preview &amp; Editor ($EDITOR Integration)</text>
-    <text class="mono" x="24.0" y="57.5" xml:space="preserve"></text>
-    <text class="mono" x="24.0" y="75.5" xml:space="preserve"></text>
-    <text class="mono" x="24.0" y="93.5" xml:space="preserve"></text>
-    <text class="mono" x="24.0" y="111.5" xml:space="preserve"></text>
-    <text class="mono" x="24.0" y="129.5" xml:space="preserve"></text>
-    <text class="mono" x="24.0" y="147.5" xml:space="preserve"></text>
-    <text class="mono" x="24.0" y="165.5" xml:space="preserve"></text>
-    <text class="mono" x="24.0" y="183.5" xml:space="preserve"></text>
-    <text class="mono" x="24.0" y="201.5" xml:space="preserve"></text>
-    <text class="mono" x="24.0" y="219.5" xml:space="preserve"></text>
-    <text class="mono" x="24.0" y="237.5" xml:space="preserve"></text>
-    <text class="mono" x="24.0" y="255.5" xml:space="preserve"><tspan x="203.9" y="255.5" fill="#79a2f7">╔════════════════════════════════════════════════════════════════════════════╗</tspan></text>
-    <text class="mono" x="24.0" y="273.5" xml:space="preserve"><tspan x="203.9" y="273.5" fill="#79a2f7">║</tspan><tspan x="806.0" y="273.5" fill="#79a2f7">║</tspan></text>
-    <text class="mono" x="24.0" y="291.5" xml:space="preserve"><tspan x="203.9" y="291.5" fill="#79a2f7">║</tspan><tspan x="227.3" y="291.5" fill="#7dcfff" font-weight="bold">─Skill Preview─</tspan><tspan x="806.0" y="291.5" fill="#79a2f7">║</tspan></text>
-    <text class="mono" x="24.0" y="309.5" xml:space="preserve"><tspan x="203.9" y="309.5" fill="#79a2f7">║</tspan><tspan x="806.0" y="309.5" fill="#79a2f7">║</tspan></text>
-    <text class="mono" x="24.0" y="327.5" xml:space="preserve"><tspan x="203.9" y="327.5" fill="#79a2f7">║</tspan><tspan x="227.3" y="327.5" fill="#c0caf5">No skill selected.</tspan><tspan x="806.0" y="327.5" fill="#79a2f7">║</tspan></text>
-    <text class="mono" x="24.0" y="345.5" xml:space="preserve"><tspan x="203.9" y="345.5" fill="#79a2f7">║</tspan><tspan x="806.0" y="345.5" fill="#79a2f7">║</tspan></text>
-    <text class="mono" x="24.0" y="363.5" xml:space="preserve"><tspan x="203.9" y="363.5" fill="#79a2f7">║</tspan><tspan x="227.3" y="363.5" fill="#7dcfff">┌──────────────────────────────────────────────────────────────────────┐</tspan><tspan x="806.0" y="363.5" fill="#79a2f7">║</tspan></text>
-    <text class="mono" x="24.0" y="381.5" xml:space="preserve"><tspan x="203.9" y="381.5" fill="#79a2f7">║</tspan><tspan x="227.3" y="381.5" fill="#7dcfff">│</tspan><tspan x="235.1" y="381.5" fill="#a9b1d6"> █                                                                    </tspan><tspan x="782.5" y="381.5" fill="#7dcfff">│</tspan><tspan x="806.0" y="381.5" fill="#79a2f7">║</tspan></text>
-    <text class="mono" x="24.0" y="399.5" xml:space="preserve"><tspan x="203.9" y="399.5" fill="#79a2f7">║</tspan><tspan x="227.3" y="399.5" fill="#7dcfff">└──────────────────────────────────────────────────────────────────────┘</tspan><tspan x="806.0" y="399.5" fill="#79a2f7">║</tspan></text>
-    <text class="mono" x="24.0" y="417.5" xml:space="preserve"><tspan x="203.9" y="417.5" fill="#79a2f7">║</tspan><tspan x="806.0" y="417.5" fill="#79a2f7">║</tspan></text>
-    <text class="mono" x="24.0" y="435.5" xml:space="preserve"><tspan x="203.9" y="435.5" fill="#79a2f7">║</tspan><tspan x="227.3" y="435.5" fill="#565f89">Esc: Close</tspan><tspan x="806.0" y="435.5" fill="#79a2f7">║</tspan></text>
-    <text class="mono" x="24.0" y="453.5" xml:space="preserve"><tspan x="203.9" y="453.5" fill="#79a2f7">║</tspan><tspan x="806.0" y="453.5" fill="#79a2f7">║</tspan></text>
-    <text class="mono" x="24.0" y="471.5" xml:space="preserve"><tspan x="203.9" y="471.5" fill="#79a2f7">╚════════════════════════════════════════════════════════════════════════════╝</tspan></text>
-    <text class="mono" x="24.0" y="489.5" xml:space="preserve"></text>
-    <text class="mono" x="24.0" y="507.5" xml:space="preserve"></text>
-    <text class="mono" x="24.0" y="525.5" xml:space="preserve"></text>
-    <text class="mono" x="24.0" y="543.5" xml:space="preserve"></text>
-    <text class="mono" x="24.0" y="561.5" xml:space="preserve"></text>
-    <text class="mono" x="24.0" y="579.5" xml:space="preserve"></text>
-    <text class="mono" x="24.0" y="597.5" xml:space="preserve"></text>
-    <text class="mono" x="24.0" y="615.5" xml:space="preserve"></text>
-    <text class="mono" x="24.0" y="633.5" xml:space="preserve"></text>
-    <text class="mono" x="24.0" y="651.5" xml:space="preserve"></text>
-    <text class="mono" x="24.0" y="669.5" xml:space="preserve"></text>
-    <text class="mono" x="24.0" y="687.5" xml:space="preserve"></text>
+    <text class="mono" x="24.0" y="57.5" xml:space="preserve"><tspan x="125.7" y="57.5" fill="#79a2f7">╔════════════════════════════════════════════════════════════════════════════════════════════════╗</tspan></text>
+    <text class="mono" x="24.0" y="75.5" xml:space="preserve"><tspan x="125.7" y="75.5" fill="#79a2f7">║</tspan><tspan x="884.2" y="75.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="93.5" xml:space="preserve"><tspan x="125.7" y="93.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="93.5" fill="#7dcfff" font-weight="bold">─Skill Preview: rental-statement-consolidator [summary]─                                    </tspan><tspan x="884.2" y="93.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="111.5" xml:space="preserve"><tspan x="125.7" y="111.5" fill="#79a2f7">║</tspan><tspan x="884.2" y="111.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="129.5" xml:space="preserve"><tspan x="125.7" y="129.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="129.5" fill="#e0af68">Name        : rental-statement-consolidator  (d458126669b1)</tspan><tspan x="884.2" y="129.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="147.5" xml:space="preserve"><tspan x="125.7" y="147.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="147.5" fill="#e0af68">Kind        : summary</tspan><tspan x="884.2" y="147.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="165.5" xml:space="preserve"><tspan x="125.7" y="165.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="165.5" fill="#e0af68">File Path   : /Users/ey.samarin/coding/telegram-ai-client/.agents/skills/rental-statement-</tspan><tspan x="884.2" y="165.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="183.5" xml:space="preserve"><tspan x="125.7" y="183.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="183.5" fill="#e0af68">consolidator/SKILL.md</tspan><tspan x="884.2" y="183.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="201.5" xml:space="preserve"><tspan x="125.7" y="201.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="201.5" fill="#e0af68">Description : Consolidates verified residential rental charges, security deposits, utility</tspan><tspan x="884.2" y="201.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="219.5" xml:space="preserve"><tspan x="125.7" y="219.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="219.5" fill="#e0af68">bills (ЖКУ), and repair/expense offsets over a 35-day rolling window (anchored to the 7th of</tspan><tspan x="884.2" y="219.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="237.5" xml:space="preserve"><tspan x="125.7" y="237.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="237.5" fill="#e0af68">each month) with strict deduplication against prior statements and self-generated statement</tspan><tspan x="884.2" y="237.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="255.5" xml:space="preserve"><tspan x="125.7" y="255.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="255.5" fill="#e0af68">PDFs, outputting atomic signed events (+ / -) in JSON for downstream validation and landing</tspan><tspan x="884.2" y="255.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="273.5" xml:space="preserve"><tspan x="125.7" y="273.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="273.5" fill="#e0af68">page rendering.</tspan><tspan x="884.2" y="273.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="291.5" xml:space="preserve"><tspan x="125.7" y="291.5" fill="#79a2f7">║</tspan><tspan x="884.2" y="291.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="309.5" xml:space="preserve"><tspan x="125.7" y="309.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="309.5" fill="#79a2f7" font-weight="bold">Prompt Instructions (&lt;skill&gt;):</tspan><tspan x="884.2" y="309.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="327.5" xml:space="preserve"><tspan x="125.7" y="327.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="327.5" fill="#3b4161">────────────────────────────────────────────────────────────────────────────────────────────</tspan><tspan x="884.2" y="327.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="345.5" xml:space="preserve"><tspan x="125.7" y="345.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="345.5" fill="#c0caf5"># Rental Statement Consolidator</tspan><tspan x="884.2" y="345.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="363.5" xml:space="preserve"><tspan x="125.7" y="363.5" fill="#79a2f7">║</tspan><tspan x="884.2" y="363.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="381.5" xml:space="preserve"><tspan x="125.7" y="381.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="381.5" fill="#c0caf5">Extract and consolidate **strictly confirmed primary financial transactions** (charges,</tspan><tspan x="884.2" y="381.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="399.5" xml:space="preserve"><tspan x="125.7" y="399.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="399.5" fill="#c0caf5">payments, expenses, and offsets) for residential property rental settlements from chat</tspan><tspan x="884.2" y="399.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="417.5" xml:space="preserve"><tspan x="125.7" y="417.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="417.5" fill="#c0caf5">histories, voice message transcripts, utility bills, and payment confirmations.</tspan><tspan x="884.2" y="417.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="435.5" xml:space="preserve"><tspan x="125.7" y="435.5" fill="#79a2f7">║</tspan><tspan x="884.2" y="435.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="453.5" xml:space="preserve"><tspan x="125.7" y="453.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="453.5" fill="#c0caf5">---</tspan><tspan x="884.2" y="453.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="471.5" xml:space="preserve"><tspan x="125.7" y="471.5" fill="#79a2f7">║</tspan><tspan x="884.2" y="471.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="489.5" xml:space="preserve"><tspan x="125.7" y="489.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="489.5" fill="#c0caf5">## 1. Rolling Window &amp; Deduplication Rules</tspan><tspan x="884.2" y="489.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="507.5" xml:space="preserve"><tspan x="125.7" y="507.5" fill="#79a2f7">║</tspan><tspan x="884.2" y="507.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="525.5" xml:space="preserve"><tspan x="125.7" y="525.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="525.5" fill="#c0caf5">### Rule 1: Self-Contained 35-Day Rolling Window</tspan><tspan x="884.2" y="525.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="543.5" xml:space="preserve"><tspan x="125.7" y="543.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="543.5" fill="#c0caf5">- Inspect timestamps across all provided messages, voice transcripts, and attachments, and</tspan><tspan x="884.2" y="543.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="561.5" xml:space="preserve"><tspan x="125.7" y="561.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="561.5" fill="#c0caf5">restrict active analysis to the **last 35 calendar days** ending on the actual run date /</tspan><tspan x="884.2" y="561.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="579.5" xml:space="preserve"><tspan x="125.7" y="579.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="579.5" fill="#c0caf5">latest message timestamp (`window_end`). Do NOT clamp `window_end` to the 7th if post-7th</tspan><tspan x="884.2" y="579.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="597.5" xml:space="preserve"><tspan x="125.7" y="597.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="597.5" fill="#c0caf5">settlement transfers occurred.</tspan><tspan x="884.2" y="597.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="615.5" xml:space="preserve"><tspan x="125.7" y="615.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="615.5" fill="#c0caf5">- The contractual billing cycle begins on the **7th of each month** (`7th of Month N`</tspan><tspan x="884.2" y="615.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="633.5" xml:space="preserve"><tspan x="125.7" y="633.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="633.5" fill="#c0caf5">through `6th of Month N+1`). The 35-day lookback provides a 4–5 day overlap threshold prior</tspan><tspan x="884.2" y="633.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="651.5" xml:space="preserve"><tspan x="125.7" y="651.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="651.5" fill="#c0caf5">to the 7th to capture boundary payments and late-posted utility bills.</tspan><tspan x="884.2" y="651.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="669.5" xml:space="preserve"><tspan x="125.7" y="669.5" fill="#79a2f7">║</tspan><tspan x="884.2" y="669.5" fill="#79a2f7">║</tspan></text>
+    <text class="mono" x="24.0" y="687.5" xml:space="preserve"><tspan x="125.7" y="687.5" fill="#79a2f7">║</tspan><tspan x="149.1" y="687.5" fill="#565f89">Esc/q/v: Close  │  e: $EDITOR  │  O: Mac Editor  │  o: Finder  │  j/k: Scroll [1/127]</tspan><tspan x="884.2" y="687.5" fill="#79a2f7">║</tspan></text>
   </g>
 </svg>

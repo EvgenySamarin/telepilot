@@ -37,6 +37,7 @@
 
 ### 2. Live Chat & AI Messaging
 - **Real-Time Messaging**: Send and receive Telegram messages instantly with live push updates.
+- **Lazy History Pagination & Persistent Cache**: Scroll past the initial 50 messages by pressing `k` / `↑` at the top, or press **`P`** to load a custom message count (up to 1000) or jump directly to any date (`YYYY-MM-DD`). Loaded history is persisted per chat in `data/live_history/` across restarts.
 - **Chat Selection & Active AI Status**: Select any chat from the sidebar. Chats with active AI assistance are clearly highlighted.
 - **Native Media Previews & macOS Finder**: Play audio messages, preview photos and documents via QuickLook, or reveal files in Finder.
 - **On-Demand AI Replies & Custom Instructions**: Request an immediate AI response to conversation context, or run targeted single-shot instructions.
@@ -49,6 +50,7 @@ Configure AI behavior independently for each Telegram conversation:
 - **Flexible Send Modes**: Choose between drafting messages into the compose box for manual review or sending immediately.
 - **Single-Shot Instructions**: Provide ad-hoc, temporary tasks for a chat without changing permanent settings.
 - **Background Task Scheduler**: Natural-language reminders and recurring tasks (e.g. "remind me in 30 minutes" or "repeat daily") are automatically parsed and executed by the internal background ticker without requiring rigid command syntax.
+- **AI Capabilities & On-Demand History**: Every AI mode receives a `<capabilities>` manifest of its loaded context and limits, and can dynamically request older messages (`<load_history count="..." />` or `<load_history date="YYYY-MM-DD" />`) during skills or single-shot runs.
 - **Modular Skills Library**: Run, author, preview, or import Markdown skills (`SKILL.md`) with automatic hot-reloading. Default skills are seeded on initial launch and preserve user deletions.
 
 <p align="center">
@@ -110,8 +112,9 @@ data/
 ├── chat_skill_outputs.json  # Cached AI skill outputs & execution metadata per chat
 ├── favorite_chats.json      # Persisted favourite / pinned chats list
 ├── hidden_chats.json        # Persisted hidden chats list
+├── live_history/            # Per-chat persistent message history caches (<chatID>.json)
 ├── scheduled_tasks.json     # Background AI scheduled reminders & recurring tasks
-└── outputs/                 # Exported Markdown output files (<chat_slug>_output.md) for QuickLook & Finder
+└── outputs/                 # Exported Markdown reports (<chat_slug>/YYYYMMDD-output.md) for QuickLook & Finder
 
 .agents/skills/              # Modular AI skills (SKILL.md) loaded dynamically with live reload
 ├── decisions-log/
@@ -131,7 +134,7 @@ cmd/
 └── screens/                 # Headless SVG screenshot generator for assets/
 
 internal/
-├── ai/                      # Antigravity (agy) CLI wrapper, skill runner & schedule parser
+├── ai/                      # Antigravity (agy) CLI wrapper, capabilities manifest, skill runner & directives
 ├── config/                  # .env & runtime AppConfig loader/persister
 ├── i18n/                    # EN / RU UI localization
 ├── mtproto/                 # Telegram gotd/td client, QR auth, live sync & media download
@@ -207,6 +210,7 @@ telepilot --qr
 | **`p` / `f`** | Chats Sidebar / Global | Pin or unpin favourite chat on top of the chats list (`📌`) |
 | **`H` / `x`** | Chats Sidebar | Hide chat from list (excluded from view; managed in Settings `C`) |
 | **`i` / `Enter`** | Tab 1 (`Live Chat`) | Focus the compose box to write and send a message (`Esc` to cancel) |
+| **`P`** | Tab 1 (`Live Chat`) | Open **Load Chat History** modal (load `N` older messages or jump to `YYYY-MM-DD`; `G` returns to live) |
 | **`a`** | Tab 1 (`Live Chat`) | Generate an on-demand AI reply for the active chat |
 | **`m`** | Tab 1, 2, 3 | Open **Single-Shot AI Instruction** modal (`Enter`: Replace & Run, `Ctrl+A`: Append, `Ctrl+X`: Stop) |
 | **`Enter` / `Esc`** | Tab 2 (`AI & Skills`) | Drill into selected box (`Enter`) / Exit back to box-level navigation (`Esc`) |

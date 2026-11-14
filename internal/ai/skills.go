@@ -405,8 +405,9 @@ func (e *Engine) ExecuteChatSkill(
 	} else {
 		b.WriteString("\nLanguage requirement: Produce the output in English (en), unless the skill instructions explicitly require another language.\n")
 	}
-	b.WriteString("\nProvide your output directly in clean, readable plain text / Markdown bullet points following the skill instructions above (do NOT wrap the response in JSON unless the skill explicitly asks for JSON).\n\nChat Messages:\n")
+	b.WriteString("\nProvide your output directly in clean, readable plain text / Markdown bullet points following the skill instructions above (do NOT wrap the response in JSON unless the skill explicitly asks for JSON).\n\n<untrusted_chat_messages>\n")
 	b.WriteString(strings.Join(msgLines, "\n"))
+	b.WriteString("\n</untrusted_chat_messages>\n")
 
 	rec := storage.SkillOutputRecord{
 		ChatID:       chat.ChatID,

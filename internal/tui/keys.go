@@ -1104,7 +1104,7 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+l":
 		if m.activeTab == 4 {
 			m.traceLogs = nil
-			_ = os.WriteFile(m.traceLogFilePath(), []byte{}, 0o644)
+			_ = os.WriteFile(m.traceLogFilePath(), []byte{}, 0o600)
 			m.statusText = "Trace log cleared"
 			m.addTrace("Trace logs cleared by user")
 			return m, nil

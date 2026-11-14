@@ -288,9 +288,9 @@ func (e *Engine) GenerateChatReply(ctx context.Context, chatTitle string, recent
 	} else if strings.TrimSpace(skillInstructions) != "" {
 		fmt.Fprintf(&promptBuilder, "\nActive Skill Context (%s):\n%s\n", skillName, strings.TrimSpace(skillInstructions))
 	}
-	promptBuilder.WriteString("\nRecent conversation history:\n")
+	promptBuilder.WriteString("\nRecent conversation history:\n<untrusted_chat_messages>\n")
 	promptBuilder.WriteString(strings.Join(historyLines, "\n"))
-	promptBuilder.WriteString("\n\nWrite ONLY the exact message text to send next as 'You'. Do not include quotes, sender prefixes, markdown code blocks, or explanations.")
+	promptBuilder.WriteString("\n</untrusted_chat_messages>\n\nWrite ONLY the exact message text to send next as 'You'. Do not include quotes, sender prefixes, markdown code blocks, or explanations.")
 
 	res, err := e.callAgyCLI(ctx, promptBuilder.String(), "")
 	if err != nil {
@@ -337,9 +337,9 @@ func (e *Engine) PlanSingleShotInstruction(ctx context.Context, chatTitle string
 	promptBuilder.WriteString(CapabilitiesPrompt(recent, true, true))
 	promptBuilder.WriteString("\n")
 	if len(historyLines) > 0 {
-		promptBuilder.WriteString("Recent chat context:\n")
+		promptBuilder.WriteString("Recent chat context:\n<untrusted_chat_messages>\n")
 		promptBuilder.WriteString(strings.Join(historyLines, "\n"))
-		promptBuilder.WriteString("\n\n")
+		promptBuilder.WriteString("\n</untrusted_chat_messages>\n\n")
 	}
 	fmt.Fprintf(&promptBuilder, "User Single-Shot Instruction:\n%s\n\n", strings.TrimSpace(instruction))
 	promptBuilder.WriteString(`Return ONLY a valid JSON array of message objects to send to the chat in order:

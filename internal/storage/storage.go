@@ -86,7 +86,7 @@ func SaveScheduledTasks(dataDir string, tasks []ScheduledTask) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(ScheduledTasksFilePath(dataDir), bytes, 0o644)
+	return os.WriteFile(ScheduledTasksFilePath(dataDir), bytes, 0o600)
 }
 
 /*
@@ -110,7 +110,7 @@ func SaveFavoriteChats(dataDir string, favs []FavoriteChatRecord) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(FavoriteChatsFilePath(dataDir), bytes, 0o644)
+	return os.WriteFile(FavoriteChatsFilePath(dataDir), bytes, 0o600)
 }
 
 /*
@@ -134,7 +134,7 @@ func SaveHiddenChats(dataDir string, hidden []HiddenChatRecord) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(HiddenChatsFilePath(dataDir), bytes, 0o644)
+	return os.WriteFile(HiddenChatsFilePath(dataDir), bytes, 0o600)
 }
 
 /*
@@ -192,7 +192,7 @@ func SaveChatAIConfigs(dataDir string, cfgs map[int64]ChatAIConfig) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(ChatAIConfigFilePath(dataDir), bytes, 0o644)
+	return os.WriteFile(ChatAIConfigFilePath(dataDir), bytes, 0o600)
 }
 
 /*
@@ -259,7 +259,7 @@ func SaveChatSkillOutputs(dataDir string, outputs map[int64]SkillOutputRecord) e
 		mdContent := fmt.Sprintf("# AI Skill Output: %s\n\n- **Skill**: %s (%s)\n- **Model**: %s\n- **Messages Analyzed**: %d\n- **Generated At**: %s\n\n---\n\n%s\n",
 			rec.ChatTitle, rec.Skill, rec.SkillHash, rec.ModelUsed, rec.MessageCount, rec.CreatedAt, rec.Output)
 		if _, statErr := os.Stat(mdPath); os.IsNotExist(statErr) || mdPath != rec.OutputPath {
-			if err := os.WriteFile(mdPath, []byte(mdContent), 0o644); err == nil {
+			if err := os.WriteFile(mdPath, []byte(mdContent), 0o600); err == nil {
 				rec.OutputPath = mdPath
 				outputs[chatID] = rec
 			}
@@ -273,7 +273,7 @@ func SaveChatSkillOutputs(dataDir string, outputs map[int64]SkillOutputRecord) e
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(ChatSkillOutputsFilePath(dataDir), bytes, 0o644)
+	return os.WriteFile(ChatSkillOutputsFilePath(dataDir), bytes, 0o600)
 }
 
 func skillOutputDateAndTimeSlug(createdAt string) (string, string) {

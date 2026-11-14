@@ -361,7 +361,7 @@ func (m *Model) addTrace(msg string) {
 		m.traceLogs = m.traceLogs[len(m.traceLogs)-500:]
 	}
 	logPath := m.traceLogFilePath()
-	if f, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); err == nil {
+	if f, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600); err == nil {
 		_, _ = f.WriteString(line + "\n")
 		_ = f.Close()
 	}
