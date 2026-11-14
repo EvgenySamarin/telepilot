@@ -330,6 +330,14 @@ func (m *Model) selectChatAtIndex(idx int) tea.Cmd {
 	m.syncCurrentChatAISettings()
 	if cached, ok := m.liveMsgCache[ch.ChatID]; ok && len(cached) > 0 {
 		m.liveMessages = cached
+	} else if m.cfg != nil {
+		if diskCache, found, err := storage.LoadChatHistory(m.cfg.DataDir, ch.ChatID); err == nil && found {
+			m.liveMsgCache[ch.ChatID] = diskCache.Messages
+			m.liveHasMore[ch.ChatID] = diskCache.HasMore
+			m.liveMessages = diskCache.Messages
+		} else {
+			m.liveMessages = storage.DemoLiveMessages(ch)
+		}
 	} else {
 		m.liveMessages = storage.DemoLiveMessages(ch)
 	}

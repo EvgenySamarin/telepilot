@@ -341,6 +341,15 @@ func NewModel(cfg *config.AppConfig, aiEngine AIEngine, mtSvc TelegramClient, fo
 		aiQuotaStatus: initialAIQuotaStatus(cfg),
 	}
 
+	if selChatID != 0 {
+		if diskCache, found, err := storage.LoadChatHistory(cfg.DataDir, selChatID); err == nil && found {
+			m.liveMsgCache[selChatID] = diskCache.Messages
+			m.liveHasMore[selChatID] = diskCache.HasMore
+			m.liveMessages = diskCache.Messages
+			m.liveMsgCursor = maxInt(0, len(m.liveMessages)-1)
+		}
+	}
+
 	_ = skills.EnsureDefaults(cfg.SkillsDir())
 	m.reloadSkills()
 	m.syncCurrentChatAISettings()
@@ -413,6 +422,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if _, known := m.liveHasMore[msg.chatID]; !known {
 				m.liveHasMore[msg.chatID] = true
 			}
+			m.persistChatHistory(msg.chatID)
 			if msg.chatID == m.selectedChatID {
 				wasAtBottom := m.liveMsgCursor >= len(m.liveMessages)-1
 				prevAnchorID := 0
@@ -478,6 +488,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		prevLen := len(m.liveMsgCache[msg.chatID])
 		merged := mergeLiveMessages(msg.messages, m.liveMsgCache[msg.chatID])
 		m.liveMsgCache[msg.chatID] = merged
+		m.persistChatHistory(msg.chatID)
 		if msg.chatID == m.selectedChatID {
 			prevFirstID := 0
 			if len(m.liveMessages) > 0 {
@@ -545,6 +556,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !exists {
 				wasAtBottom := m.liveMsgCursor >= len(m.liveMessages)-1
 				m.liveMessages = append(m.liveMessages, msg.msg)
+				if m.liveHistoryByDate[msg.chatID] == "" {
+					m.liveMsgCache[msg.chatID] = m.liveMessages
+					m.persistChatHistory(msg.chatID)
+				}
 				if wasAtBottom {
 					m.liveMsgCursor = len(m.liveMessages) - 1
 				}
@@ -969,4 +984,22 @@ func mergeLiveMessages(a, b []storage.LiveMessage) []storage.LiveMessage {
 		out = append(out, byID[id])
 	}
 	return out
+}
+
+func (m *Model) persistChatHistory(chatID int64) {
+	if m.cfg == nil || m.cfg.DataDir == "" || chatID == 0 {
+		return
+	}
+	if m.liveHistoryByDate[chatID] != "" {
+		return
+	}
+	msgs := m.liveMsgCache[chatID]
+	if len(msgs) == 0 {
+		return
+	}
+	hasMore, known := m.liveHasMore[chatID]
+	if !known {
+		hasMore = true
+	}
+	_ = storage.SaveChatHistory(m.cfg.DataDir, chatID, msgs, hasMore)
 }

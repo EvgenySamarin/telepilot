@@ -183,3 +183,30 @@ func TestLiveChatSanitizesControlAndZeroWidthChars(t *testing.T) {
 		}
 	}
 }
+
+func TestPersistentHistorySurvivesRestart(t *testing.T) {
+	cfg := AppConfigStub(t.TempDir(), "en")
+	m1 := NewModel(cfg, nil, nil, true)
+	ch := m1.activeChat()
+	if ch == nil {
+		t.Fatal("expected active demo chat")
+	}
+
+	_, _ = m1.Update(olderMessagesLoadedMsg{
+		chatID: ch.ChatID,
+		messages: []storage.LiveMessage{
+			{MessageID: 5, ChatID: ch.ChatID, Sender: "Alice", Text: "persisted old message"},
+			{MessageID: 6, ChatID: ch.ChatID, Sender: "You", Text: "persisted reply"},
+		},
+		hasMore: false,
+	})
+
+	// Simulate app restart with the same DataDir
+	m2 := NewModel(cfg, nil, nil, true)
+	if len(m2.liveMessages) == 0 || m2.liveMessages[0].MessageID != 5 {
+		t.Fatalf("expected persisted message ID 5 after restart, got %+v", m2.liveMessages)
+	}
+	if hasMore, known := m2.liveHasMore[ch.ChatID]; !known || hasMore {
+		t.Fatalf("expected persisted liveHasMore=false after restart, got known=%v hasMore=%v", known, hasMore)
+	}
+}
