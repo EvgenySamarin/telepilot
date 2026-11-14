@@ -278,10 +278,16 @@ func (m *Model) handleModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.activeModal = modalNone
 			return m, nil
 		case "tab", "down":
-			m.aiFormFocus = (m.aiFormFocus + 1) % 3
+			m.aiFormFocus = (m.aiFormFocus + 1) % 4
+			if m.aiNoTimeout && m.aiFormFocus == 2 {
+				m.aiFormFocus = 3
+			}
 			return m, nil
 		case "shift+tab", "up":
-			m.aiFormFocus = (m.aiFormFocus + 2) % 3
+			m.aiFormFocus = (m.aiFormFocus + 3) % 4
+			if m.aiNoTimeout && m.aiFormFocus == 2 {
+				m.aiFormFocus = 1
+			}
 			return m, nil
 		case "f2":
 			curModel := strings.TrimSpace(m.aiFormFields[1])
@@ -298,6 +304,9 @@ func (m *Model) handleModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.saveAIConfigForm()
 			m.aiStatusLine = fmt.Sprintf("Switched Antigravity CLI (agy) model to %s. Press Enter or Ctrl+T to test.", m.aiFormFields[1])
 			return m, nil
+		case "f3":
+			m.toggleAINoTimeout()
+			return m, nil
 		case "ctrl+t", "enter":
 			return m, m.startAITestCmd()
 		case "ctrl+s":
@@ -305,17 +314,30 @@ func (m *Model) handleModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.activeModal = modalNone
 			return m, nil
 		case "ctrl+u":
-			m.aiFormFields[m.aiFormFocus] = ""
+			if m.aiFormFocus < len(m.aiFormFields) && !(m.aiNoTimeout && m.aiFormFocus == 2) {
+				m.aiFormFields[m.aiFormFocus] = ""
+			}
 			return m, nil
 		case "backspace":
-			cur := m.aiFormFields[m.aiFormFocus]
-			if len(cur) > 0 {
-				_, sz := utf8.DecodeLastRuneInString(cur)
-				m.aiFormFields[m.aiFormFocus] = cur[:len(cur)-sz]
+			if m.aiFormFocus < len(m.aiFormFields) && !(m.aiNoTimeout && m.aiFormFocus == 2) {
+				cur := m.aiFormFields[m.aiFormFocus]
+				if len(cur) > 0 {
+					_, sz := utf8.DecodeLastRuneInString(cur)
+					m.aiFormFields[m.aiFormFocus] = cur[:len(cur)-sz]
+				}
+			}
+			return m, nil
+		case " ":
+			if m.aiFormFocus == 3 {
+				m.toggleAINoTimeout()
+				return m, nil
+			}
+			if m.aiFormFocus < len(m.aiFormFields) && !(m.aiNoTimeout && m.aiFormFocus == 2) && m.aiFormFocus != 2 {
+				m.aiFormFields[m.aiFormFocus] += " "
 			}
 			return m, nil
 		default:
-			if utf8.RuneCountInString(key) == 1 {
+			if utf8.RuneCountInString(key) == 1 && m.aiFormFocus < len(m.aiFormFields) && !(m.aiNoTimeout && m.aiFormFocus == 2) {
 				if m.aiFormFocus == 2 && (key[0] < '0' || key[0] > '9') {
 					return m, nil
 				}
@@ -714,7 +736,12 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if strings.TrimSpace(m.aiFormFields[1]) == "" {
 				m.aiFormFields[1] = "auto"
 			}
-			m.aiFormFields[2] = strconv.Itoa(int(m.cfg.AgyTimeout().Seconds()))
+			m.aiNoTimeout = m.cfg.AgyNoTimeout
+			if m.cfg.AgyTimeoutSeconds > 0 {
+				m.aiFormFields[2] = strconv.Itoa(m.cfg.AgyTimeoutSeconds)
+			} else {
+				m.aiFormFields[2] = "90"
+			}
 			m.aiFormFocus = 0
 			m.activeModal = modalAIConfig
 		}
@@ -1071,7 +1098,12 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					if strings.TrimSpace(m.aiFormFields[1]) == "" {
 						m.aiFormFields[1] = "auto"
 					}
-					m.aiFormFields[2] = strconv.Itoa(int(m.cfg.AgyTimeout().Seconds()))
+					m.aiNoTimeout = m.cfg.AgyNoTimeout
+					if m.cfg.AgyTimeoutSeconds > 0 {
+						m.aiFormFields[2] = strconv.Itoa(m.cfg.AgyTimeoutSeconds)
+					} else {
+						m.aiFormFields[2] = "90"
+					}
 					m.aiFormFocus = 0
 					m.activeModal = modalAIConfig
 				case 3:

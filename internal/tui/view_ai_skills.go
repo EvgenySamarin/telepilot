@@ -217,7 +217,12 @@ func (m *Model) renderRePromptTab(rec *storage.SkillOutputRecord, innerW int) []
 	if chatSchedCount > 0 {
 		schedLine = m.T("skills_sched_active", chatSchedCount, nextSchedStr)
 	}
-	timeoutLine := m.T("skills_chat_timeout", int(m.cfg.AgyTimeout().Seconds()))
+	var timeoutLine string
+	if d := m.cfg.AgyTimeout(); d == 0 {
+		timeoutLine = m.T("skills_chat_no_timeout")
+	} else {
+		timeoutLine = m.T("skills_chat_timeout", int(d.Seconds()))
+	}
 	chatAIBody += "\n" + schedLine + "\n" + timeoutLine
 
 	if m.tab2BoxEntered && m.tab2BoxCursor == 1 {

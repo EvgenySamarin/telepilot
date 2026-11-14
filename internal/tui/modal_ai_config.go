@@ -64,32 +64,74 @@ func (m *Model) renderAIConfigModal() string {
 
 	for i := 0; i < 3; i++ {
 		val := m.aiFormFields[i]
+		isDisabled := i == 2 && m.aiNoTimeout
 		if i == 0 && strings.TrimSpace(val) == "" && m.aiFormFocus != 0 {
 			if m.cfg.IsRussian() {
 				val = "Авто-поиск agy в ~/.local/bin/agy или PATH"
 			} else {
 				val = "Auto-detect agy in ~/.local/bin/agy or PATH"
 			}
-		} else if i == 2 && strings.TrimSpace(val) == "" && m.aiFormFocus != 2 {
+		} else if isDisabled {
+			if m.cfg.IsRussian() {
+				val = "— (отключен)"
+			} else {
+				val = "— (disabled)"
+			}
+		} else if i == 2 && m.aiFormFocus != 2 && strings.TrimSpace(val) == "" {
 			val = "90"
 		}
-		if m.aiFormFocus == i {
+		if m.aiFormFocus == i && !isDisabled {
 			val += "█"
 		}
 		fBorder := colBorder
-		if m.aiFormFocus == i {
+		if m.aiFormFocus == i && !isDisabled {
 			fBorder = colCyan
+		}
+		renderedVal := padOrTruncate(val, fieldW-2)
+		if isDisabled {
+			renderedVal = lipgloss.NewStyle().Foreground(colMuted).Render(renderedVal)
 		}
 		fieldBox := lipgloss.NewStyle().
 			Border(lipgloss.NormalBorder()).
 			BorderForeground(fBorder).
 			Padding(0, 1).
 			Width(fieldW).
-			Render(padOrTruncate(val, fieldW-2))
+			Render(renderedVal)
 
 		lbl := lipgloss.NewStyle().Foreground(colBlue).Bold(true).Render("\n" + labels[i])
 		rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top, lbl, " ", fieldBox))
 	}
+
+	// No Timeout ON/OFF toggle strictly under the Timeout field
+	noTimeoutOn := m.aiNoTimeout
+	var toggleBadge, toggleHint string
+	if noTimeoutOn {
+		toggleBadge = lipgloss.NewStyle().Background(colGreen).Foreground(colBg).Bold(true).Render(" ON ")
+		if m.cfg.IsRussian() {
+			toggleHint = " Ждать ответа ИИ без таймаута (F3 / Space)"
+		} else {
+			toggleHint = " Wait for AI without timeout (F3 / Space)"
+		}
+	} else {
+		toggleBadge = lipgloss.NewStyle().Background(colBorder).Foreground(colText).Bold(true).Render(" OFF ")
+		if m.cfg.IsRussian() {
+			toggleHint = " Использовать таймаут выше (F3 / Space)"
+		} else {
+			toggleHint = " Use timeout above (F3 / Space)"
+		}
+	}
+	toggleBorder := colBorder
+	if m.aiFormFocus == 3 {
+		toggleBorder = colCyan
+	}
+	toggleBox := lipgloss.NewStyle().
+		Border(lipgloss.NormalBorder()).
+		BorderForeground(toggleBorder).
+		Padding(0, 1).
+		Width(fieldW).
+		Render(toggleBadge + lipgloss.NewStyle().Foreground(colMuted).Render(padOrTruncate(toggleHint, fieldW-8)))
+	toggleLbl := lipgloss.NewStyle().Foreground(colBlue).Bold(true).Render("\n" + m.T("ai_modal_no_timeout"))
+	rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top, toggleLbl, " ", toggleBox))
 
 	diagCol := colText
 	if strings.Contains(m.aiStatusLine, "[OK]") {

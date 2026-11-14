@@ -127,7 +127,7 @@ func (e *Engine) callAgyCLI(ctx context.Context, prompt string, mediaPath string
 		return "", fmt.Errorf("antigravity CLI (agy) not found")
 	}
 
-	cctx, cancel := context.WithTimeout(ctx, e.cfg.AgyTimeout())
+	cctx, cancel := e.cfg.WithAgyTimeout(ctx)
 	defer cancel()
 
 	var args []string

@@ -102,4 +102,15 @@ func TestConfigAgyTimeoutDefaultAndSave(t *testing.T) {
 	if reloaded.AgyTimeout() != 180*time.Second {
 		t.Fatalf("expected reloaded AgyTimeout 180s from .env, got %v", reloaded.AgyTimeout())
 	}
+
+	if err := cfg.SaveAIConfig("", "pro", 0); err != nil {
+		t.Fatalf("SaveAIConfig(0) failed: %v", err)
+	}
+	if !cfg.AgyNoTimeout || cfg.AgyTimeout() != 0 {
+		t.Fatalf("expected AgyNoTimeout=true and AgyTimeout=0, got noTimeout=%v timeout=%v", cfg.AgyNoTimeout, cfg.AgyTimeout())
+	}
+	reloaded = Load()
+	if !reloaded.AgyNoTimeout || reloaded.AgyTimeout() != 0 {
+		t.Fatalf("expected reloaded AgyNoTimeout=true and AgyTimeout=0, got noTimeout=%v timeout=%v", reloaded.AgyNoTimeout, reloaded.AgyTimeout())
+	}
 }

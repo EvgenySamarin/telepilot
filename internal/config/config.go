@@ -8,6 +8,7 @@ package config
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -36,6 +37,7 @@ type AppConfig struct {
 	AgyCLIBinPath      string
 	AgyModel           string
 	AgyTimeoutSeconds  int
+	AgyNoTimeout       bool
 	DefaultPeriod      string
 	DefaultSkill       string // summary skill name in .agents/skills/
 	DefaultNotes       string // optional extra instructions appended to the skill on each run
@@ -141,9 +143,19 @@ func Load() *AppConfig {
 		lang = "en"
 	}
 	agyTimeout := 90
+	agyNoTimeout := false
+	if rawNoTimeout := strings.ToLower(strings.TrimSpace(getVal("AGY_NO_TIMEOUT", ""))); rawNoTimeout == "true" || rawNoTimeout == "1" || rawNoTimeout == "yes" {
+		agyNoTimeout = true
+		agyTimeout = 0
+	}
 	if rawTimeout := strings.TrimSpace(getVal("AGY_TIMEOUT_SECONDS", "")); rawTimeout != "" {
-		if v, err := strconv.Atoi(rawTimeout); err == nil && v > 0 {
-			agyTimeout = v
+		if v, err := strconv.Atoi(rawTimeout); err == nil {
+			if v == 0 {
+				agyNoTimeout = true
+				agyTimeout = 0
+			} else if v > 0 && !agyNoTimeout {
+				agyTimeout = v
+			}
 		}
 	}
 
@@ -157,6 +169,7 @@ func Load() *AppConfig {
 		AgyCLIBinPath:      getVal("AGY_CLI_BIN", ""),
 		AgyModel:           getVal("AGY_MODEL", "auto"),
 		AgyTimeoutSeconds:  agyTimeout,
+		AgyNoTimeout:       agyNoTimeout,
 		DefaultPeriod:      getVal("DEFAULT_PERIOD", "1m"),
 		DefaultSkill:       getVal("DEFAULT_SKILL", DefaultSkillName),
 		DefaultNotes:       defaultNotes,
@@ -219,9 +232,12 @@ func (c *AppConfig) ActiveModelLabel() string {
 }
 
 /*
-AgyTimeout returns the configured agy CLI timeout duration, defaulting to 90s when unset.
+AgyTimeout returns the configured agy CLI timeout duration, or 0 when no-timeout mode is enabled.
 */
 func (c *AppConfig) AgyTimeout() time.Duration {
+	if c != nil && c.AgyNoTimeout {
+		return 0
+	}
 	if c != nil && c.AgyTimeoutSeconds > 0 {
 		return time.Duration(c.AgyTimeoutSeconds) * time.Second
 	}
@@ -229,7 +245,18 @@ func (c *AppConfig) AgyTimeout() time.Duration {
 }
 
 /*
-SaveAIConfig updates the AGY CLI binary path, model preset, and timeout, and persists them to .env.
+WithAgyTimeout returns a derived context with the configured agy timeout, or a cancellable
+context without a deadline when no-timeout mode is enabled.
+*/
+func (c *AppConfig) WithAgyTimeout(parent context.Context) (context.Context, context.CancelFunc) {
+	if d := c.AgyTimeout(); d > 0 {
+		return context.WithTimeout(parent, d)
+	}
+	return context.WithCancel(parent)
+}
+
+/*
+SaveAIConfig updates the AGY CLI binary path, model preset, and timeout (0 = no timeout), and persists them to .env.
 */
 func (c *AppConfig) SaveAIConfig(agyBinPath, agyModel string, timeoutSeconds int) error {
 	c.AgyCLIBinPath = strings.TrimSpace(agyBinPath)
@@ -238,10 +265,17 @@ func (c *AppConfig) SaveAIConfig(agyBinPath, agyModel string, timeoutSeconds int
 	} else if strings.TrimSpace(c.AgyModel) == "" {
 		c.AgyModel = "auto"
 	}
-	if timeoutSeconds > 0 {
+	switch {
+	case timeoutSeconds == 0:
+		c.AgyNoTimeout = true
+		c.AgyTimeoutSeconds = 0
+	case timeoutSeconds > 0:
+		c.AgyNoTimeout = false
 		c.AgyTimeoutSeconds = timeoutSeconds
-	} else if c.AgyTimeoutSeconds <= 0 {
-		c.AgyTimeoutSeconds = 90
+	default:
+		if !c.AgyNoTimeout && c.AgyTimeoutSeconds <= 0 {
+			c.AgyTimeoutSeconds = 90
+		}
 	}
 	return c.SaveCredentials(c.TelegramAPIID, c.TelegramAPIHash, c.TelegramServerIP, c.TelegramServerPort, c.AgyModel)
 }
@@ -304,7 +338,9 @@ func (c *AppConfig) SaveCredentials(apiID int, apiHash, serverIP string, serverP
 		langToSave = "en"
 	}
 	timeoutToSave := c.AgyTimeoutSeconds
-	if timeoutToSave <= 0 {
+	if c.AgyNoTimeout {
+		timeoutToSave = 0
+	} else if timeoutToSave <= 0 {
 		timeoutToSave = 90
 	}
 	lines := []string{
@@ -316,6 +352,7 @@ func (c *AppConfig) SaveCredentials(apiID int, apiHash, serverIP string, serverP
 		fmt.Sprintf("AGY_CLI_BIN=%s", binToSave),
 		fmt.Sprintf("AGY_MODEL=%s", c.AgyModel),
 		fmt.Sprintf("AGY_TIMEOUT_SECONDS=%d", timeoutToSave),
+		fmt.Sprintf("AGY_NO_TIMEOUT=%t", c.AgyNoTimeout),
 		fmt.Sprintf("DEFAULT_PERIOD=%s", c.DefaultPeriod),
 		fmt.Sprintf("DEFAULT_SKILL=%s", c.DefaultSkill),
 		fmt.Sprintf("DEFAULT_NOTES=%s", strings.ReplaceAll(c.DefaultNotes, "\n", " ")),

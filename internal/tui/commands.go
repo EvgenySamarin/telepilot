@@ -49,7 +49,7 @@ func (m *Model) generateAIChatReplyCmd(chat storage.ChatInfo, msgs []storage.Liv
 	copy(msgsCopy, msgs)
 
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), m.cfg.AgyTimeout())
+		ctx, cancel := m.cfg.WithAgyTimeout(context.Background())
 		defer cancel()
 		reply, err := m.ai.GenerateChatReply(ctx, chat.Title, msgsCopy, skillName, notes)
 		return aiChatReplyGeneratedMsg{
@@ -345,7 +345,9 @@ func (m *Model) saveAIConfigForm() {
 		m.aiFormFields[1] = agyModel
 	}
 	timeoutSec := 90
-	if v, err := strconv.Atoi(strings.TrimSpace(m.aiFormFields[2])); err == nil && v > 0 {
+	if m.aiNoTimeout {
+		timeoutSec = 0
+	} else if v, err := strconv.Atoi(strings.TrimSpace(m.aiFormFields[2])); err == nil && v > 0 {
 		timeoutSec = v
 	} else {
 		m.aiFormFields[2] = "90"
@@ -355,6 +357,22 @@ func (m *Model) saveAIConfigForm() {
 		m.addTrace(fmt.Sprintf("Failed to save AI config to .env: %v", err))
 		m.statusText = fmt.Sprintf("Failed to save .env: %v", err)
 	}
+}
+
+func (m *Model) toggleAINoTimeout() {
+	m.aiNoTimeout = !m.aiNoTimeout
+	if m.aiNoTimeout {
+		if m.aiFormFocus == 2 {
+			m.aiFormFocus = 3
+		}
+		m.aiStatusLine = "No-timeout mode enabled (wait indefinitely for AI response). Press Ctrl+S to save."
+	} else {
+		if strings.TrimSpace(m.aiFormFields[2]) == "" || strings.TrimSpace(m.aiFormFields[2]) == "0" {
+			m.aiFormFields[2] = "90"
+		}
+		m.aiStatusLine = fmt.Sprintf("AI CLI timeout set to %ss. Press Ctrl+S to save or Enter to test.", m.aiFormFields[2])
+	}
+	m.saveAIConfigForm()
 }
 
 func (m *Model) startAITestCmd() tea.Cmd {
@@ -559,7 +577,7 @@ func (m *Model) runSingleShotInstructionCmd(instruction string, appendMode bool)
 			default:
 			}
 
-			planCtx, planCancel := context.WithTimeout(runCtx, m.cfg.AgyTimeout())
+			planCtx, planCancel := m.cfg.WithAgyTimeout(runCtx)
 			actions, err := m.ai.PlanSingleShotInstruction(planCtx, target.Title, msgsCopy, nextInstr)
 			planCancel()
 			if err != nil {
@@ -635,7 +653,7 @@ func (m *Model) runSingleShotInstructionCmd(instruction string, appendMode bool)
 
 func (m *Model) executeScheduledTaskCmd(task storage.ScheduledTask) tea.Cmd {
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), m.cfg.AgyTimeout())
+		ctx, cancel := m.cfg.WithAgyTimeout(context.Background())
 		defer cancel()
 
 		chatTarget := storage.ChatInfo{
@@ -708,7 +726,7 @@ func (m *Model) runChatAICmd() tea.Cmd {
 	m.statusText = fmt.Sprintf("Running skill (%s)...", skillName)
 
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), m.cfg.AgyTimeout())
+		ctx, cancel := m.cfg.WithAgyTimeout(context.Background())
 		defer cancel()
 		m.uiEventCh <- parseLogMsg(fmt.Sprintf("Running AI skill '%s' on chat '%s' (%d messages)...", skillName, target.Title, len(msgsCopy)))
 		rec, err := m.ai.ExecuteChatSkill(ctx, target, skillName, notes, msgsCopy)

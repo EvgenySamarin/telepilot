@@ -571,4 +571,43 @@ func TestAIConfigModalTimeoutEditing(t *testing.T) {
 	if !strings.Contains(tab2, "AI Timeout:") || !strings.Contains(tab2, "240s (press 'c' to configure)") {
 		t.Errorf("expected Tab 2 Per-Chat AI Instructions to show 240s timeout, got:\n%s", tab2)
 	}
+
+	// Re-open modal and toggle No Timeout with F3
+	mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+	m = mUpdated.(*Model)
+	mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeyF3})
+	m = mUpdated.(*Model)
+	if !m.aiNoTimeout || !m.cfg.AgyNoTimeout || m.cfg.AgyTimeout() != 0 {
+		t.Fatalf("expected F3 to enable no-timeout mode, got aiNoTimeout=%v noTimeout=%v timeout=%v", m.aiNoTimeout, m.cfg.AgyNoTimeout, m.cfg.AgyTimeout())
+	}
+	modalView := m.renderAIConfigModal()
+	if !strings.Contains(modalView, "No Timeout:") || !strings.Contains(modalView, "ON") || !strings.Contains(modalView, "— (disabled)") {
+		t.Errorf("expected modal to render No Timeout ON and disabled timeout field with no digits, got:\n%s", modalView)
+	}
+	if strings.Contains(modalView, "240") {
+		t.Errorf("expected no digits in disabled timeout field when No Timeout is ON, got:\n%s", modalView)
+	}
+	// Tab from field 0 -> 1 -> 3 (skips disabled field 2)
+	mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = mUpdated.(*Model)
+	mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = mUpdated.(*Model)
+	if m.aiFormFocus != 3 {
+		t.Fatalf("expected Tab to skip disabled timeout field (2) and land on 3, got %d", m.aiFormFocus)
+	}
+	// Space toggles back OFF (restoring 240s)
+	mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
+	m = mUpdated.(*Model)
+	if m.aiNoTimeout || m.cfg.AgyNoTimeout || m.aiFormFields[2] != "240" {
+		t.Fatalf("expected Space to toggle no-timeout OFF (restoring 240s), got field=%q aiNoTimeout=%v noTimeout=%v", m.aiFormFields[2], m.aiNoTimeout, m.cfg.AgyNoTimeout)
+	}
+	// Toggle back ON with Space so Tab 2 assertion below checks no-timeout rendering
+	mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
+	m = mUpdated.(*Model)
+	mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	m = mUpdated.(*Model)
+	tab2 = strings.Join(m.renderRePromptTab(nil, 100), "\n")
+	if !strings.Contains(tab2, "No timeout — wait for AI response") {
+		t.Errorf("expected Tab 2 to show no-timeout status, got:\n%s", tab2)
+	}
 }

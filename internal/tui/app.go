@@ -129,6 +129,7 @@ type Model struct {
 
 	// AI Engine Configuration modal state
 	aiFormFields [3]string // 0: AGY CLI Path, 1: AGY Model, 2: AGY Timeout (seconds)
+	aiNoTimeout  bool
 	aiFormFocus  int
 	aiTesting     bool
 	aiPassed      bool
@@ -317,8 +318,14 @@ func NewModel(cfg *config.AppConfig, aiEngine AIEngine, mtSvc TelegramClient, fo
 		aiFormFields: [3]string{
 			cfg.AgyCLIBin(),
 			cfg.AgyModel,
-			strconv.Itoa(int(cfg.AgyTimeout().Seconds())),
+			func() string {
+				if cfg.AgyTimeoutSeconds > 0 {
+					return strconv.Itoa(cfg.AgyTimeoutSeconds)
+				}
+				return "90"
+			}(),
 		},
+		aiNoTimeout:   cfg.AgyNoTimeout,
 		aiStatusLine:  initialAIStatusLine(cfg),
 		aiQuotaStatus: initialAIQuotaStatus(cfg),
 	}
