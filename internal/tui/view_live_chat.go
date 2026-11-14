@@ -126,8 +126,9 @@ func (m *Model) renderLiveChatTab(innerW, visibleRows int) []string {
 
 			// 3. Wrap message text & media attachments with clean left time column + vertical accent bar
 			var bodyLines []string
-			if strings.TrimSpace(lm.Text) != "" {
-				bodyLines = append(bodyLines, wrapTextBlock(lm.Text, textW)...)
+			cleanText := sanitizeTerminalText(lm.Text)
+			if cleanText != "" {
+				bodyLines = append(bodyLines, wrapTextBlock(cleanText, textW)...)
 			}
 			var mediaLineIdx = -1
 			if lm.MediaType != "" {
@@ -143,7 +144,8 @@ func (m *Model) renderLiveChatTab(innerW, visibleRows int) []string {
 				if sizeKB == 0 && lm.MediaSize > 0 {
 					sizeKB = 1
 				}
-				mediaLine := fmt.Sprintf("📎 [%s] %s (%d KB) %s", mTag, lm.MediaFileName, sizeKB, hint)
+				mediaName := sanitizeTerminalText(lm.MediaFileName)
+				mediaLine := fmt.Sprintf("📎 [%s] %s (%d KB) %s", mTag, mediaName, sizeKB, hint)
 				mediaLineIdx = len(bodyLines)
 				bodyLines = append(bodyLines, truncateSingleLine(mediaLine, textW))
 			}

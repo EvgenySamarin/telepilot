@@ -229,14 +229,21 @@ func padRightVisual(s string, width int) string {
 func sanitizeTerminalText(s string) string {
 	var b strings.Builder
 	for _, r := range s {
-		if r == '\r' || r == '\x00' || r == '\x1b' {
+		if r == '\r' || r == '\x00' || r == '\x1b' || r == '\x7f' {
 			continue
 		}
 		if r == '\t' {
 			b.WriteString("  ")
 			continue
 		}
-		if r == '\uFE0F' || r == '\uFE0E' || r == '\u200D' || (r >= 0x1F1E6 && r <= 0x1F1FF) {
+		if r == '\uFE0F' || r == '\uFE0E' ||
+			(r >= '\u200B' && r <= '\u200F') ||
+			(r >= '\u202A' && r <= '\u202E') ||
+			r == '\u2060' ||
+			(r >= '\u2066' && r <= '\u2069') ||
+			r == '\uFEFF' ||
+			(r >= 0x1F1E6 && r <= 0x1F1FF) ||
+			(r >= 0x1F3FB && r <= 0x1F3FF) {
 			continue
 		}
 		if r < 32 && r != '\n' {

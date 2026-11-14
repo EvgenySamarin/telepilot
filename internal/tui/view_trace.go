@@ -40,9 +40,14 @@ func (m *Model) renderTraceTab(innerW int) []string {
 		lipgloss.NewStyle().Foreground(colYellow).Bold(true).Render("[Ctrl+X]"),
 		lipgloss.NewStyle().Foreground(colText).Render("Stop Tasks"),
 	)
-	metaLine := fmt.Sprintf("Log File: %s | %d lines | %s", relPath, len(m.traceLogs), actionsBar)
+	metaLine := fmt.Sprintf("Log File: %s | %d lines", relPath, len(m.traceLogs))
 	out = append(out, lipgloss.NewStyle().Foreground(colMuted).Render(truncateSingleLine(metaLine, innerW)))
-	out = append(out, lipgloss.NewStyle().Foreground(colBorder).Render(strings.Repeat("─", maxInt(10, innerW))))
+	if lipgloss.Width(actionsBar) > innerW {
+		out = append(out, lipgloss.NewStyle().MaxWidth(innerW).Render(actionsBar))
+	} else {
+		out = append(out, actionsBar)
+	}
+	out = append(out, lipgloss.NewStyle().Foreground(colBorder).Render(strings.Repeat("─", maxInt(1, innerW))))
 
 	schedStyle := lipgloss.NewStyle().Foreground(colYellow)
 	stopStyle := lipgloss.NewStyle().Foreground(colRed).Bold(true)

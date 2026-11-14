@@ -1,10 +1,12 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"telepilot/internal/storage"
 )
@@ -149,4 +151,35 @@ func TestHistoryModalOpensAndValidates(t *testing.T) {
 		t.Fatal("expected nil cmd when liveHasMore is false")
 	}
 	_ = time.Now()
+}
+
+func TestLiveChatSanitizesControlAndZeroWidthChars(t *testing.T) {
+	m := newHistoryTestModel(t)
+	m.width = 120
+	m.height = 36
+	ch := m.activeChat()
+	m.liveMessages = []storage.LiveMessage{
+		{
+			MessageID: 1,
+			ChatID:    ch.ChatID,
+			Sender:    "Alice",
+			Timestamp: "2026-11-14 12:00",
+			Text:      "Hello\t\tworld\r\nwith\u200Bzero\uFE0Fwidth\u200Dand\x1b[31mCSI",
+		},
+	}
+	m.liveMsgCursor = 0
+
+	rendered := m.View()
+	lines := strings.Split(rendered, "\n")
+	if len(lines) > m.height {
+		t.Fatalf("expected rendered lines <= %d, got %d", m.height, len(lines))
+	}
+	for i, line := range lines {
+		if w := lipgloss.Width(line); w > m.width {
+			t.Fatalf("line %d exceeds width %d (got %d)", i, m.width, w)
+		}
+		if strings.ContainsAny(line, "\t\r\u200B\uFE0F\u200D") {
+			t.Fatalf("line %d contains unsanitized control/zero-width character: %q", i, line)
+		}
+	}
 }
