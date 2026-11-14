@@ -1,3 +1,9 @@
+/*
+File: internal/presentation/tui/app_test.go
+Description: TUI test helpers (newTestModel, AppConfigStub) and core layout,
+rendering, localization, resizing, and modal tests.
+*/
+
 package tui
 
 import (

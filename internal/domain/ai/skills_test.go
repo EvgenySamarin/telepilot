@@ -1,3 +1,9 @@
+/*
+File: internal/domain/ai/skills_test.go
+Description: Unit tests verifying that AI skill prompts and outputs respect the
+configured application language.
+*/
+
 package ai
 
 import (

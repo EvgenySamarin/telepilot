@@ -1,3 +1,9 @@
+/*
+File: internal/presentation/tui/view_layout.go
+Description: Top-level View() compositor, top status bar, bottom hotkey bar, main
+panel router, and reusable navigation box renderer.
+*/
+
 package tui
 
 import (

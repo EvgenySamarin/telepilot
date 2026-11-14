@@ -1,3 +1,9 @@
+/*
+File: internal/presentation/tui/ai_state.go
+Description: Per-chat AI configuration helpers, skills reload/reset/disk-sync, initial
+AI/quota status lines, trace logging, and confirmation-only reply detection.
+*/
+
 package tui
 
 import (

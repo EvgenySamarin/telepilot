@@ -1,3 +1,8 @@
+/*
+File: internal/presentation/i18n/i18n_test.go
+Description: Unit tests for language normalization and translation lookups.
+*/
+
 package i18n
 
 import (

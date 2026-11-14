@@ -1,3 +1,9 @@
+/*
+File: internal/presentation/tui/scheduler.go
+Description: Scheduled task lifecycle helpers for cancelling per-chat/all tasks and
+polling due scheduled tasks.
+*/
+
 package tui
 
 import (

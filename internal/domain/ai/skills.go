@@ -1,3 +1,9 @@
+/*
+File: internal/domain/ai/skills.go
+Description: AI skill execution helpers for media analysis, period summaries, and
+chat-level skill prompts.
+*/
+
 package ai
 
 import (

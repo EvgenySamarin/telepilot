@@ -1,3 +1,9 @@
+/*
+File: internal/presentation/tui/keys.go
+Description: Keyboard input handlers for chat search, live message composing, modal
+dialogs, and main workspace navigation.
+*/
+
 package tui
 
 import (

@@ -1,3 +1,9 @@
+/*
+File: internal/domain/storage/models.go
+Description: Core domain data models for chats, favourite/hidden chat records,
+scheduled tasks, live messages, media items, per-chat AI config, and skill outputs.
+*/
+
 package storage
 
 import "time"

@@ -1,3 +1,9 @@
+/*
+File: internal/presentation/tui/modal_global_config.go
+Description: Renderer for the Global Configuration modal managing UI language,
+favourite chats, hidden chats, and default skill reset.
+*/
+
 package tui
 
 import (

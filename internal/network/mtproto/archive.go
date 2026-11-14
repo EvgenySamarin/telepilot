@@ -1,3 +1,9 @@
+/*
+File: internal/network/mtproto/archive.go
+Description: Historical chat message and media downloader (ParseChatPeriod) with
+offline demo period generation fallback.
+*/
+
 package mtproto
 
 import (

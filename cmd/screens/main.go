@@ -1,3 +1,9 @@
+/*
+File: cmd/screens/main.go
+Description: Headless terminal screenshot generator that renders TUI tabs and modals
+into ANSI-to-SVG/PNG assets under assets/.
+*/
+
 package main
 
 import (

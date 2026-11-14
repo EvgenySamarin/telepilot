@@ -1,3 +1,9 @@
+/*
+File: internal/presentation/i18n/i18n.go
+Description: Internationalization helpers (Normalize, IsRussian, T) providing English
+and Russian UI string translations.
+*/
+
 package i18n
 
 import (

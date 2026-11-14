@@ -1,3 +1,9 @@
+/*
+File: internal/presentation/tui/view_ai_skills.go
+Description: Tab 2 AI & Skills configuration renderer with box-level navigation,
+quota/health card, and scrollable Skills Library.
+*/
+
 package tui
 
 import (

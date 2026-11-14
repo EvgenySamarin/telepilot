@@ -1,3 +1,9 @@
+/*
+File: internal/domain/ai/engine.go
+Description: Core AI engine wrapping the agy CLI, connection testing, chat auto-reply
+generation, single-shot instruction planning, and scheduled task message generation.
+*/
+
 package ai
 
 import (

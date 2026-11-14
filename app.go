@@ -1,3 +1,10 @@
+/*
+File: app.go
+Description: Root CLI entrypoint for the telepilot binary. Parses command-line flags
+(--test-conn, --qr-login, --summary, --demo) and launches either headless utilities
+or the interactive Bubble Tea TUI.
+*/
+
 package main
 
 import (

@@ -1,3 +1,8 @@
+/*
+File: internal/domain/config/config_test.go
+Description: Unit tests for default language configuration and persistence.
+*/
+
 package config
 
 import (

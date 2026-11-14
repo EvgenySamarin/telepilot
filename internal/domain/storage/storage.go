@@ -1,3 +1,9 @@
+/*
+File: internal/domain/storage/storage.go
+Description: JSON and Markdown persistence helpers for per-chat AI configs, favourite
+chats, hidden chats, scheduled tasks, and skill output artifacts.
+*/
+
 package storage
 
 import (

@@ -1,3 +1,8 @@
+/*
+File: internal/presentation/tui/modal_login.go
+Description: Renderers for the Telegram API credentials form modal and QR login modal.
+*/
+
 package tui
 
 import (

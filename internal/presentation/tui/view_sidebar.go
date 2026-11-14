@@ -1,3 +1,9 @@
+/*
+File: internal/presentation/tui/view_sidebar.go
+Description: Left-hand Chats sidebar renderer with search prompt, pinned/AI badges,
+unread indicators, and hidden-chats notice.
+*/
+
 package tui
 
 import (

@@ -1,3 +1,8 @@
+/*
+File: internal/presentation/tui/modal_skill_preview.go
+Description: Renderer for the scrollable Skill Preview modal.
+*/
+
 package tui
 
 import (

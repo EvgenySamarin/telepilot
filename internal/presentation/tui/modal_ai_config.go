@@ -1,3 +1,9 @@
+/*
+File: internal/presentation/tui/modal_ai_config.go
+Description: Renderer for the AI Engine configuration modal for editing the AGY CLI
+binary path and model preset.
+*/
+
 package tui
 
 import (

@@ -1,3 +1,8 @@
+/*
+File: internal/presentation/tui/modal_prompt.go
+Description: Renderers for the Single-Shot AI Instruction modal and generic input modal.
+*/
+
 package tui
 
 import (

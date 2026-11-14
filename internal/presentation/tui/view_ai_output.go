@@ -1,3 +1,9 @@
+/*
+File: internal/presentation/tui/view_ai_output.go
+Description: Tab 3 AI Output renderer displaying generated skill and summary markdown
+output with vertical scrolling.
+*/
+
 package tui
 
 import (

@@ -1,3 +1,9 @@
+/*
+File: internal/presentation/tui/view_live_chat.go
+Description: Tab 1 Live Chat renderer and message compose box with date separators
+and media attachment badges.
+*/
+
 package tui
 
 import (

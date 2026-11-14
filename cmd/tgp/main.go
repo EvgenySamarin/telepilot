@@ -1,3 +1,9 @@
+/*
+File: cmd/tgp/main.go
+Description: CLI entrypoint for the tgp binary. Parses command-line flags and launches
+headless Telegram/AI utilities or the interactive Bubble Tea TUI.
+*/
+
 package main
 
 import (

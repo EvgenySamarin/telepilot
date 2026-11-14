@@ -1,3 +1,9 @@
+/*
+File: internal/presentation/tui/chats.go
+Description: Chat list management including active chat lookup, selection, pinning
+favourites, hiding/unhiding, and search filtering.
+*/
+
 package tui
 
 import (

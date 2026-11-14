@@ -1,3 +1,9 @@
+/*
+File: internal/network/mtproto/client.go
+Description: MTProto Service constructor, Telegram client option builder, and
+connection diagnostic test runner.
+*/
+
 package mtproto
 
 import (

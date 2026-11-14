@@ -1,3 +1,9 @@
+/*
+File: internal/presentation/tui/messages.go
+Description: TUI focus/modal enums (focusArea, modalKind), Bubble Tea tea.Msg event
+types, and the per-chat single-shot runner queue/cancellation state.
+*/
+
 package tui
 
 import (

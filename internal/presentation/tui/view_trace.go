@@ -1,3 +1,8 @@
+/*
+File: internal/presentation/tui/view_trace.go
+Description: Tab 4 Trace & Logs renderer and short duration formatter.
+*/
+
 package tui
 
 import (

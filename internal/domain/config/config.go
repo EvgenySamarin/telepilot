@@ -1,3 +1,9 @@
+/*
+File: internal/domain/config/config.go
+Description: Application configuration loader and persister (AppConfig), managing .env
+settings, project/data/skills paths, Telegram and AGY credentials, language, and periods.
+*/
+
 package config
 
 import (

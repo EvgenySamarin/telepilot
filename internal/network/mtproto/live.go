@@ -1,3 +1,9 @@
+/*
+File: internal/network/mtproto/live.go
+Description: Live Telegram MTProto operations: dialog listing, recent message fetching,
+sending messages, media download caching, and real-time update streaming.
+*/
+
 package mtproto
 
 import (

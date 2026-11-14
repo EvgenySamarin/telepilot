@@ -1,3 +1,9 @@
+/*
+File: internal/presentation/tui/styles.go
+Description: Lipgloss color palette, shared box/card renderers, text wrapping/truncation
+utilities, marquee animation, and terminal viewport clamping.
+*/
+
 package tui
 
 import (

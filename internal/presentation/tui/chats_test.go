@@ -1,3 +1,9 @@
+/*
+File: internal/presentation/tui/chats_test.go
+Description: TUI unit tests for chat selection, live compose/send, vim search, Finder
+media reveal, favourite pinning, and hidden chats.
+*/
+
 package tui
 
 import (

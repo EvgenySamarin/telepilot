@@ -1,3 +1,9 @@
+/*
+File: internal/domain/skills/skills_test.go
+Description: Unit tests for default skill seeding, deletion handling, media
+classification, skill creation, and file/Finder import.
+*/
+
 package skills
 
 import (

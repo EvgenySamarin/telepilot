@@ -1,3 +1,9 @@
+/*
+File: internal/domain/skills/skills.go
+Description: Domain loader, parser, creator, and importer for Markdown AI skills in
+.agents/skills/<name>/SKILL.md, including default seeding and media classification.
+*/
+
 // Package skills loads AI instruction "skills" from <project>/.agents/skills/<name>/SKILL.md.
 //
 // A skill is a Markdown file with a small YAML-like frontmatter header:

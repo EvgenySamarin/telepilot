@@ -1,3 +1,9 @@
+/*
+File: internal/domain/ai/schedule.go
+Description: Parser for <schedule> directives in AI replies, handling relative durations,
+wall-clock timestamps, and directive tag extraction.
+*/
+
 package ai
 
 import (

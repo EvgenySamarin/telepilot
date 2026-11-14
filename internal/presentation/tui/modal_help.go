@@ -1,3 +1,8 @@
+/*
+File: internal/presentation/tui/modal_help.go
+Description: Renderer for the keyboard shortcuts and workflow Help modal.
+*/
+
 package tui
 
 import (

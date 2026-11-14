@@ -1,3 +1,8 @@
+/*
+File: internal/domain/ai/schedule_test.go
+Description: Unit tests for schedule duration parsing and <schedule> directive extraction.
+*/
+
 package ai
 
 import (

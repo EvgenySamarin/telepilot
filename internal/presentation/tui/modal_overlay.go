@@ -1,3 +1,9 @@
+/*
+File: internal/presentation/tui/modal_overlay.go
+Description: Top-level modal overlay dispatcher that centers the active modal dialog
+within the terminal viewport.
+*/
+
 package tui
 
 import "github.com/charmbracelet/lipgloss"

@@ -1,3 +1,9 @@
+/*
+File: internal/presentation/tui/app.go
+Description: Core Bubble Tea Model struct, NewModel constructor, Init, main Update
+event loop, and screenshot/capture state helpers.
+*/
+
 package tui
 
 import (

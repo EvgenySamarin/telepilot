@@ -1,3 +1,8 @@
+/*
+File: internal/domain/storage/storage_test.go
+Description: Unit tests for favourite chats, hidden chats, and scheduled tasks storage.
+*/
+
 package storage
 
 import (

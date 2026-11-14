@@ -1,3 +1,9 @@
+/*
+File: internal/presentation/tui/ai_test.go
+Description: TUI unit tests for AI auto-reply modes, single-shot replace/append/cancel,
+skills live reload/import/reset, AI output tab, scheduled tasks, and quota status.
+*/
+
 package tui
 
 import (

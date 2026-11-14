@@ -1,3 +1,9 @@
+/*
+File: internal/presentation/tui/commands.go
+Description: Asynchronous Bubble Tea tea.Cmd factories for Telegram sync, live
+messaging, media download/Finder reveal, QR login, AI replies, single-shot runs, and tasks.
+*/
+
 package tui
 
 import (

@@ -1,3 +1,9 @@
+/*
+File: internal/network/mtproto/auth.go
+Description: Telegram MTProto authorization check, terminal/PNG half-block QR code
+renderer, and interactive QR login flow.
+*/
+
 package mtproto
 
 import (
