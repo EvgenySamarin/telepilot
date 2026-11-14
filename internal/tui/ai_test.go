@@ -16,6 +16,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"telepilot/internal/ai"
 	"telepilot/internal/config"
 	"telepilot/internal/skills"
 	"telepilot/internal/storage"
@@ -491,5 +492,83 @@ func TestAIQuotaStatusUpdatesInTab2(t *testing.T) {
 	m = mUpdated.(*Model)
 	if !strings.Contains(m.aiQuotaStatus, "[OK]") {
 		t.Fatalf("expected [OK] after recovery, got %q", m.aiQuotaStatus)
+	}
+}
+
+func TestSkillFailureLogsExactModelErrorToTrace(t *testing.T) {
+	m := newTestModel(t, "en")
+	cliErr := &ai.AgyCLIError{
+		Err:    fmt.Errorf("exit status 1"),
+		Stderr: "Model error: context_length_exceeded\nRequested 128500 tokens, limit is 100000",
+		Stdout: "partial response",
+	}
+
+	mUpdated, _ := m.Update(parseDoneMsg{err: cliErr})
+	m = mUpdated.(*Model)
+
+	joined := strings.Join(m.traceLogs, "\n")
+	if !strings.Contains(joined, "Chat AI skill execution failed:") {
+		t.Fatalf("expected failure header in traceLogs, got:\n%s", joined)
+	}
+	if !strings.Contains(joined, "agy stderr: Model error: context_length_exceeded") {
+		t.Fatalf("expected exact stderr line 1 in traceLogs, got:\n%s", joined)
+	}
+	if !strings.Contains(joined, "agy stderr: Requested 128500 tokens, limit is 100000") {
+		t.Fatalf("expected exact stderr line 2 in traceLogs, got:\n%s", joined)
+	}
+	if !strings.Contains(joined, "agy stdout: partial response") {
+		t.Fatalf("expected stdout line in traceLogs, got:\n%s", joined)
+	}
+
+	raw, err := os.ReadFile(m.traceLogFilePath())
+	if err != nil {
+		t.Fatalf("read trace.log: %v", err)
+	}
+	if !strings.Contains(string(raw), "Requested 128500 tokens, limit is 100000") {
+		t.Fatalf("expected exact model error persisted in trace.log, got:\n%s", string(raw))
+	}
+}
+
+func TestAIConfigModalTimeoutEditing(t *testing.T) {
+	m := newTestModel(t, "en")
+
+	// Open AI Config modal via 'c'
+	mUpdated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+	m = mUpdated.(*Model)
+	if m.activeModal != modalAIConfig {
+		t.Fatalf("expected modalAIConfig, got %v", m.activeModal)
+	}
+
+	// Tab twice to reach Timeout field (index 2)
+	mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = mUpdated.(*Model)
+	mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = mUpdated.(*Model)
+	if m.aiFormFocus != 2 {
+		t.Fatalf("expected aiFormFocus=2, got %d", m.aiFormFocus)
+	}
+
+	// Clear field, ignore non-digits, type "240", and save with Ctrl+S
+	mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlU})
+	m = mUpdated.(*Model)
+	for _, r := range []rune{'a', '2', '4', '0', 's'} {
+		mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m = mUpdated.(*Model)
+	}
+	if m.aiFormFields[2] != "240" {
+		t.Fatalf("expected digits-only timeout '240', got %q", m.aiFormFields[2])
+	}
+
+	mUpdated, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	m = mUpdated.(*Model)
+	if m.activeModal != modalNone {
+		t.Fatalf("expected modal closed after Ctrl+S, got %v", m.activeModal)
+	}
+	if m.cfg.AgyTimeout() != 240*time.Second {
+		t.Fatalf("expected AgyTimeout=240s, got %v", m.cfg.AgyTimeout())
+	}
+	tab2 := strings.Join(m.renderRePromptTab(nil, 100), "\n")
+	if !strings.Contains(tab2, "AI Timeout:") || !strings.Contains(tab2, "240s (press 'c' to configure)") {
+		t.Errorf("expected Tab 2 Per-Chat AI Instructions to show 240s timeout, got:\n%s", tab2)
 	}
 }

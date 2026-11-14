@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -276,8 +277,11 @@ func (m *Model) handleModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "esc":
 			m.activeModal = modalNone
 			return m, nil
-		case "tab", "down", "shift+tab", "up":
-			m.aiFormFocus = (m.aiFormFocus + 1) % 2
+		case "tab", "down":
+			m.aiFormFocus = (m.aiFormFocus + 1) % 3
+			return m, nil
+		case "shift+tab", "up":
+			m.aiFormFocus = (m.aiFormFocus + 2) % 3
 			return m, nil
 		case "f2":
 			curModel := strings.TrimSpace(m.aiFormFields[1])
@@ -312,6 +316,9 @@ func (m *Model) handleModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		default:
 			if utf8.RuneCountInString(key) == 1 {
+				if m.aiFormFocus == 2 && (key[0] < '0' || key[0] > '9') {
+					return m, nil
+				}
 				m.aiFormFields[m.aiFormFocus] += key
 			}
 			return m, nil
@@ -707,6 +714,7 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if strings.TrimSpace(m.aiFormFields[1]) == "" {
 				m.aiFormFields[1] = "auto"
 			}
+			m.aiFormFields[2] = strconv.Itoa(int(m.cfg.AgyTimeout().Seconds()))
 			m.aiFormFocus = 0
 			m.activeModal = modalAIConfig
 		}
@@ -1063,6 +1071,7 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					if strings.TrimSpace(m.aiFormFields[1]) == "" {
 						m.aiFormFields[1] = "auto"
 					}
+					m.aiFormFields[2] = strconv.Itoa(int(m.cfg.AgyTimeout().Seconds()))
 					m.aiFormFocus = 0
 					m.activeModal = modalAIConfig
 				case 3:

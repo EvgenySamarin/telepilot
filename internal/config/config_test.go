@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestConfigLanguageDefaultAndSave(t *testing.T) {
@@ -78,5 +79,27 @@ func TestConfigLanguageDefaultAndSave(t *testing.T) {
 	}
 	if loaded.IsRussian() {
 		t.Errorf("loaded.IsRussian() should be false")
+	}
+}
+
+func TestConfigAgyTimeoutDefaultAndSave(t *testing.T) {
+	tempDir := t.TempDir()
+	t.Setenv("TELEPILOT_HOME", tempDir)
+
+	cfg := Load()
+	if cfg.AgyTimeout() != 90*time.Second {
+		t.Fatalf("expected default AgyTimeout 90s, got %v", cfg.AgyTimeout())
+	}
+
+	if err := cfg.SaveAIConfig("", "pro", 180); err != nil {
+		t.Fatalf("SaveAIConfig failed: %v", err)
+	}
+	if cfg.AgyTimeout() != 180*time.Second {
+		t.Fatalf("expected updated AgyTimeout 180s, got %v", cfg.AgyTimeout())
+	}
+
+	reloaded := Load()
+	if reloaded.AgyTimeout() != 180*time.Second {
+		t.Fatalf("expected reloaded AgyTimeout 180s from .env, got %v", reloaded.AgyTimeout())
 	}
 }

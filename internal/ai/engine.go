@@ -7,8 +7,10 @@ generation, single-shot instruction planning, and scheduled task message generat
 package ai
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -42,13 +44,90 @@ type summarySections struct {
 	ActionItems        string `json:"action_items"`
 }
 
+/*
+AgyCLIError captures the underlying process error, timeout state, and raw stdout/stderr
+returned by the agy CLI so callers can surface exact model/CLI errors in trace logs.
+*/
+type AgyCLIError struct {
+	Err      error
+	TimedOut bool
+	Elapsed  time.Duration
+	Stdout   string
+	Stderr   string
+}
+
+func (e *AgyCLIError) Error() string {
+	base := "agy CLI error"
+	if e.TimedOut {
+		if e.Elapsed > 0 {
+			base = fmt.Sprintf("agy CLI timed out after %s: %v", e.Elapsed, e.Err)
+		} else {
+			base = fmt.Sprintf("agy CLI timed out: %v", e.Err)
+		}
+	} else if e.Err != nil {
+		base = e.Err.Error()
+	}
+
+	detail := strings.TrimSpace(e.Stderr)
+	if detail == "" {
+		detail = strings.TrimSpace(e.Stdout)
+	}
+	if detail != "" {
+		return fmt.Sprintf("%s (%s)", base, singleLineSummary(detail, 300))
+	}
+	return base
+}
+
+func (e *AgyCLIError) Unwrap() error {
+	return e.Err
+}
+
+/*
+TraceDetails returns formatted non-empty stderr and stdout lines from the agy CLI
+for detailed trace logging.
+*/
+func (e *AgyCLIError) TraceDetails() []string {
+	var lines []string
+	lines = appendStreamLines(lines, "agy stderr", e.Stderr, 30)
+	lines = appendStreamLines(lines, "agy stdout", e.Stdout, 30)
+	return lines
+}
+
+func appendStreamLines(dst []string, label, raw string, maxLines int) []string {
+	if strings.TrimSpace(raw) == "" {
+		return dst
+	}
+	count := 0
+	for _, rawLine := range strings.Split(raw, "\n") {
+		trimmed := strings.TrimSpace(rawLine)
+		if trimmed == "" {
+			continue
+		}
+		if count >= maxLines {
+			dst = append(dst, fmt.Sprintf("%s: ... (truncated)", label))
+			break
+		}
+		dst = append(dst, fmt.Sprintf("%s: %s", label, trimmed))
+		count++
+	}
+	return dst
+}
+
+func singleLineSummary(s string, maxLen int) string {
+	collapsed := strings.Join(strings.Fields(s), " ")
+	if maxLen > 0 && len(collapsed) > maxLen {
+		return collapsed[:maxLen] + "..."
+	}
+	return collapsed
+}
+
 func (e *Engine) callAgyCLI(ctx context.Context, prompt string, mediaPath string) (string, error) {
 	bin := e.cfg.AgyCLIBin()
 	if bin == "" {
 		return "", fmt.Errorf("antigravity CLI (agy) not found")
 	}
 
-	cctx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	cctx, cancel := context.WithTimeout(ctx, e.cfg.AgyTimeout())
 	defer cancel()
 
 	var args []string
@@ -71,21 +150,45 @@ func (e *Engine) callAgyCLI(ctx context.Context, prompt string, mediaPath string
 	if e.cfg.ProjectRoot != "" {
 		cmd.Dir = e.cfg.ProjectRoot
 	}
-	out, err := cmd.CombinedOutput()
-	text := strings.TrimSpace(string(out))
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	started := time.Now()
+	err := cmd.Run()
+	outText := strings.TrimSpace(stdout.String())
+	errText := strings.TrimSpace(stderr.String())
+
 	if err != nil {
-		if text != "" {
-			return "", fmt.Errorf("%v (%s)", err, firstLine(text))
+		timedOut := errors.Is(cctx.Err(), context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded)
+		return "", &AgyCLIError{
+			Err:      err,
+			TimedOut: timedOut,
+			Elapsed:  time.Since(started).Round(time.Second),
+			Stdout:   outText,
+			Stderr:   errText,
 		}
-		return "", err
 	}
-	if text == "" {
+	if outText == "" {
+		if errText != "" {
+			return "", &AgyCLIError{
+				Err:    fmt.Errorf("empty stdout from agy CLI"),
+				Stderr: errText,
+			}
+		}
 		return "", fmt.Errorf("empty output from agy CLI")
 	}
-	if strings.Contains(text, "Opening authentication page") || strings.Contains(text, "Do you want to continue?") {
-		return "", fmt.Errorf("agy CLI requires interactive authentication (run 'agy' in terminal once)")
+	if strings.Contains(outText, "Opening authentication page") ||
+		strings.Contains(outText, "Do you want to continue?") ||
+		strings.Contains(errText, "Opening authentication page") ||
+		strings.Contains(errText, "Do you want to continue?") {
+		return "", &AgyCLIError{
+			Err:    fmt.Errorf("agy CLI requires interactive authentication (run 'agy' in terminal once)"),
+			Stdout: outText,
+			Stderr: errText,
+		}
 	}
-	return text, nil
+	return outText, nil
 }
 
 /*

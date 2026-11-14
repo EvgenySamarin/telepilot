@@ -128,7 +128,7 @@ type Model struct {
 	inputBuffer string
 
 	// AI Engine Configuration modal state
-	aiFormFields [2]string // 0: AGY CLI Path, 1: AGY Model
+	aiFormFields [3]string // 0: AGY CLI Path, 1: AGY Model, 2: AGY Timeout (seconds)
 	aiFormFocus  int
 	aiTesting     bool
 	aiPassed      bool
@@ -314,9 +314,10 @@ func NewModel(cfg *config.AppConfig, aiEngine AIEngine, mtSvc TelegramClient, fo
 			cfg.AgyModel,
 		},
 		connLines: initConnLines,
-		aiFormFields: [2]string{
+		aiFormFields: [3]string{
 			cfg.AgyCLIBin(),
 			cfg.AgyModel,
+			strconv.Itoa(int(cfg.AgyTimeout().Seconds())),
 		},
 		aiStatusLine:  initialAIStatusLine(cfg),
 		aiQuotaStatus: initialAIQuotaStatus(cfg),
@@ -476,7 +477,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.updateAIQuotaStatus(msg.err)
 		if msg.err != nil {
 			m.statusText = "AI reply error"
-			m.addTrace(fmt.Sprintf("AI reply generation failed for '%s': %v", msg.chat.Title, msg.err))
+			m.addAIErrorTrace(fmt.Sprintf("AI reply generation failed for '%s'", msg.chat.Title), msg.err)
 			return m, nil
 		}
 		reply := strings.TrimSpace(msg.reply)
@@ -573,7 +574,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case scheduledTaskExecutedMsg:
 		m.updateAIQuotaStatus(msg.err)
 		if msg.err != nil {
-			m.addTrace(fmt.Sprintf("⏰ Scheduled task failed for '%s': %v", msg.task.ChatTitle, msg.err))
+			m.addAIErrorTrace(fmt.Sprintf("⏰ Scheduled task failed for '%s'", msg.task.ChatTitle), msg.err)
 		} else {
 			if msg.sentMsg.MessageID > 0 {
 				m.sentMsgIDs[msg.sentMsg.MessageID] = true
@@ -770,7 +771,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.updateAIQuotaStatus(msg.err)
 		if msg.err != nil {
 			m.statusText = "Skill error"
-			m.addTrace(fmt.Sprintf("Chat AI skill execution failed: %v", msg.err))
+			m.addAIErrorTrace("Chat AI skill execution failed", msg.err)
 		} else if msg.record != nil {
 			if m.skillOutputs == nil {
 				m.skillOutputs = make(map[int64]storage.SkillOutputRecord)

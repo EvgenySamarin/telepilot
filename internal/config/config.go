@@ -35,6 +35,7 @@ type AppConfig struct {
 	TelegramServerPort int
 	AgyCLIBinPath      string
 	AgyModel           string
+	AgyTimeoutSeconds  int
 	DefaultPeriod      string
 	DefaultSkill       string // summary skill name in .agents/skills/
 	DefaultNotes       string // optional extra instructions appended to the skill on each run
@@ -139,6 +140,12 @@ func Load() *AppConfig {
 	if lang != "ru" {
 		lang = "en"
 	}
+	agyTimeout := 90
+	if rawTimeout := strings.TrimSpace(getVal("AGY_TIMEOUT_SECONDS", "")); rawTimeout != "" {
+		if v, err := strconv.Atoi(rawTimeout); err == nil && v > 0 {
+			agyTimeout = v
+		}
+	}
 
 	return &AppConfig{
 		ProjectRoot:        root,
@@ -149,6 +156,7 @@ func Load() *AppConfig {
 		TelegramServerPort: port,
 		AgyCLIBinPath:      getVal("AGY_CLI_BIN", ""),
 		AgyModel:           getVal("AGY_MODEL", "auto"),
+		AgyTimeoutSeconds:  agyTimeout,
 		DefaultPeriod:      getVal("DEFAULT_PERIOD", "1m"),
 		DefaultSkill:       getVal("DEFAULT_SKILL", DefaultSkillName),
 		DefaultNotes:       defaultNotes,
@@ -211,14 +219,29 @@ func (c *AppConfig) ActiveModelLabel() string {
 }
 
 /*
-SaveAIConfig updates the AGY CLI binary path and model preset and persists them to .env.
+AgyTimeout returns the configured agy CLI timeout duration, defaulting to 90s when unset.
 */
-func (c *AppConfig) SaveAIConfig(agyBinPath, agyModel string) error {
+func (c *AppConfig) AgyTimeout() time.Duration {
+	if c != nil && c.AgyTimeoutSeconds > 0 {
+		return time.Duration(c.AgyTimeoutSeconds) * time.Second
+	}
+	return 90 * time.Second
+}
+
+/*
+SaveAIConfig updates the AGY CLI binary path, model preset, and timeout, and persists them to .env.
+*/
+func (c *AppConfig) SaveAIConfig(agyBinPath, agyModel string, timeoutSeconds int) error {
 	c.AgyCLIBinPath = strings.TrimSpace(agyBinPath)
 	if strings.TrimSpace(agyModel) != "" {
 		c.AgyModel = strings.TrimSpace(agyModel)
 	} else if strings.TrimSpace(c.AgyModel) == "" {
 		c.AgyModel = "auto"
+	}
+	if timeoutSeconds > 0 {
+		c.AgyTimeoutSeconds = timeoutSeconds
+	} else if c.AgyTimeoutSeconds <= 0 {
+		c.AgyTimeoutSeconds = 90
 	}
 	return c.SaveCredentials(c.TelegramAPIID, c.TelegramAPIHash, c.TelegramServerIP, c.TelegramServerPort, c.AgyModel)
 }
@@ -280,6 +303,10 @@ func (c *AppConfig) SaveCredentials(apiID int, apiHash, serverIP string, serverP
 	if langToSave != "ru" {
 		langToSave = "en"
 	}
+	timeoutToSave := c.AgyTimeoutSeconds
+	if timeoutToSave <= 0 {
+		timeoutToSave = 90
+	}
 	lines := []string{
 		fmt.Sprintf("TELEGRAM_API_ID=%d", c.TelegramAPIID),
 		fmt.Sprintf("TELEGRAM_API_HASH=%s", c.TelegramAPIHash),
@@ -288,6 +315,7 @@ func (c *AppConfig) SaveCredentials(apiID int, apiHash, serverIP string, serverP
 		fmt.Sprintf("TELEGRAM_SERVER_PORT=%d", c.TelegramServerPort),
 		fmt.Sprintf("AGY_CLI_BIN=%s", binToSave),
 		fmt.Sprintf("AGY_MODEL=%s", c.AgyModel),
+		fmt.Sprintf("AGY_TIMEOUT_SECONDS=%d", timeoutToSave),
 		fmt.Sprintf("DEFAULT_PERIOD=%s", c.DefaultPeriod),
 		fmt.Sprintf("DEFAULT_SKILL=%s", c.DefaultSkill),
 		fmt.Sprintf("DEFAULT_NOTES=%s", strings.ReplaceAll(c.DefaultNotes, "\n", " ")),

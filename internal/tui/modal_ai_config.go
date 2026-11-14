@@ -19,9 +19,10 @@ func (m *Model) renderAIConfigModal() string {
 	}
 	innerW := modalW - 4
 
-	labels := [2]string{
+	labels := [3]string{
 		m.T("ai_modal_path"),
 		m.T("ai_modal_model"),
+		m.T("ai_modal_timeout"),
 	}
 
 	var rows []string
@@ -61,7 +62,7 @@ func (m *Model) renderAIConfigModal() string {
 		fieldW = 20
 	}
 
-	for i := 0; i < 2; i++ {
+	for i := 0; i < 3; i++ {
 		val := m.aiFormFields[i]
 		if i == 0 && strings.TrimSpace(val) == "" && m.aiFormFocus != 0 {
 			if m.cfg.IsRussian() {
@@ -69,6 +70,8 @@ func (m *Model) renderAIConfigModal() string {
 			} else {
 				val = "Auto-detect agy in ~/.local/bin/agy or PATH"
 			}
+		} else if i == 2 && strings.TrimSpace(val) == "" && m.aiFormFocus != 2 {
+			val = "90"
 		}
 		if m.aiFormFocus == i {
 			val += "█"

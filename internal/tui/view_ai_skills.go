@@ -217,7 +217,8 @@ func (m *Model) renderRePromptTab(rec *storage.SkillOutputRecord, innerW int) []
 	if chatSchedCount > 0 {
 		schedLine = m.T("skills_sched_active", chatSchedCount, nextSchedStr)
 	}
-	chatAIBody += "\n" + schedLine
+	timeoutLine := m.T("skills_chat_timeout", int(m.cfg.AgyTimeout().Seconds()))
+	chatAIBody += "\n" + schedLine + "\n" + timeoutLine
 
 	if m.tab2BoxEntered && m.tab2BoxCursor == 1 {
 		chatAIBody = highlightBox1EnteredOption(chatAIBody, m.tab2ChatOptCursor)

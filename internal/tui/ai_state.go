@@ -7,12 +7,14 @@ AI/quota status lines, trace logging, and confirmation-only reply detection.
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"telepilot/internal/ai"
 	"telepilot/internal/config"
 	"telepilot/internal/skills"
 	"telepilot/internal/storage"
@@ -362,6 +364,19 @@ func (m *Model) addTrace(msg string) {
 	if f, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); err == nil {
 		_, _ = f.WriteString(line + "\n")
 		_ = f.Close()
+	}
+}
+
+func (m *Model) addAIErrorTrace(prefix string, err error) {
+	if err == nil {
+		return
+	}
+	m.addTrace(fmt.Sprintf("%s: %v", prefix, err))
+	var cliErr *ai.AgyCLIError
+	if errors.As(err, &cliErr) {
+		for _, line := range cliErr.TraceDetails() {
+			m.addTrace("  " + line)
+		}
 	}
 }
 
