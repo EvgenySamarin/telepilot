@@ -176,12 +176,13 @@ func (e *Engine) GenerateChatReply(ctx context.Context, chatTitle string, recent
 	}
 
 	var promptBuilder strings.Builder
-	promptBuilder.WriteString(fmt.Sprintf("You are participating on behalf of the user ('You') in the Telegram chat %q.\n", chatTitle))
-	promptBuilder.WriteString(langHint + "\n")
+	fmt.Fprintf(&promptBuilder, "You are participating on behalf of the user ('You') in the Telegram chat %q.\n", chatTitle)
+	promptBuilder.WriteString(langHint)
+	promptBuilder.WriteString("\n")
 	if strings.TrimSpace(customNotes) != "" {
-		promptBuilder.WriteString(fmt.Sprintf("\nPer-Chat AI Instructions (highest priority):\n%s\n", strings.TrimSpace(customNotes)))
+		fmt.Fprintf(&promptBuilder, "\nPer-Chat AI Instructions (highest priority):\n%s\n", strings.TrimSpace(customNotes))
 	} else if strings.TrimSpace(skillInstructions) != "" {
-		promptBuilder.WriteString(fmt.Sprintf("\nActive Skill Context (%s):\n%s\n", skillName, strings.TrimSpace(skillInstructions)))
+		fmt.Fprintf(&promptBuilder, "\nActive Skill Context (%s):\n%s\n", skillName, strings.TrimSpace(skillInstructions))
 	}
 	promptBuilder.WriteString("\nRecent conversation history:\n")
 	promptBuilder.WriteString(strings.Join(historyLines, "\n"))
@@ -227,13 +228,14 @@ func (e *Engine) PlanSingleShotInstruction(ctx context.Context, chatTitle string
 	}
 
 	var promptBuilder strings.Builder
-	promptBuilder.WriteString(fmt.Sprintf("You are executing a standalone single-shot instruction on behalf of the user ('You') in the Telegram chat %q.\n", chatTitle))
+	fmt.Fprintf(&promptBuilder, "You are executing a standalone single-shot instruction on behalf of the user ('You') in the Telegram chat %q.\n", chatTitle)
 	promptBuilder.WriteString("This is a direct chat action and is NOT a period summarization task.\n\n")
 	if len(historyLines) > 0 {
 		promptBuilder.WriteString("Recent chat context:\n")
-		promptBuilder.WriteString(strings.Join(historyLines, "\n") + "\n\n")
+		promptBuilder.WriteString(strings.Join(historyLines, "\n"))
+		promptBuilder.WriteString("\n\n")
 	}
-	promptBuilder.WriteString(fmt.Sprintf("User Single-Shot Instruction:\n%s\n\n", strings.TrimSpace(instruction)))
+	fmt.Fprintf(&promptBuilder, "User Single-Shot Instruction:\n%s\n\n", strings.TrimSpace(instruction))
 	promptBuilder.WriteString(`Return ONLY a valid JSON array of message objects to send to the chat in order:
 [
   {"text": "exact message text to send", "delay_seconds": 0}
@@ -317,12 +319,13 @@ func (e *Engine) GenerateScheduledTaskMessage(ctx context.Context, chatTitle str
 	}
 
 	var promptBuilder strings.Builder
-	promptBuilder.WriteString(fmt.Sprintf("You are participating on behalf of the user ('You') in Telegram chat %q.\n", chatTitle))
+	fmt.Fprintf(&promptBuilder, "You are participating on behalf of the user ('You') in Telegram chat %q.\n", chatTitle)
 	promptBuilder.WriteString("A scheduled background reminder / recurring task has just triggered now:\n")
-	promptBuilder.WriteString(fmt.Sprintf("Scheduled Task / Reminder: %q\n\n", strings.TrimSpace(taskPrompt)))
+	fmt.Fprintf(&promptBuilder, "Scheduled Task / Reminder: %q\n\n", strings.TrimSpace(taskPrompt))
 	if len(historyLines) > 0 {
 		promptBuilder.WriteString("Recent chat conversation context:\n")
-		promptBuilder.WriteString(strings.Join(historyLines, "\n") + "\n\n")
+		promptBuilder.WriteString(strings.Join(historyLines, "\n"))
+		promptBuilder.WriteString("\n\n")
 	}
 	promptBuilder.WriteString("Write ONLY the exact message text to send to the chat now as 'You'. Do NOT include quotes, markdown code fences, prefixes like 'You:', or explanations. Respond naturally in the language of the task or chat.")
 
