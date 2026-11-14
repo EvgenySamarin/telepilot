@@ -67,3 +67,66 @@ jobs:
           files: |
             dist/*.tar.gz
             dist/checksums.txt
+
+      - name: Update Homebrew Tap
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [ -z "$TAP_TOKEN" ]; then
+            echo "::notice::HOMEBREW_TAP_TOKEN secret is not set; skipping Homebrew tap update."
+            exit 0
+          fi
+
+          VERSION="${TAG#v}"
+          SHA_DARWIN_ARM64=$(grep "telepilot_${TAG}_darwin_arm64.tar.gz" dist/checksums.txt | awk '{print $1}')
+          SHA_DARWIN_AMD64=$(grep "telepilot_${TAG}_darwin_amd64.tar.gz" dist/checksums.txt | awk '{print $1}')
+          SHA_LINUX_AMD64=$(grep "telepilot_${TAG}_linux_amd64.tar.gz" dist/checksums.txt | awk '{print $1}')
+
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/EvgenySamarin/homebrew-tap.git" /tmp/homebrew-tap
+          cat > /tmp/homebrew-tap/Formula/telepilot.rb <<EOF
+          class Telepilot < Formula
+            desc "Lightweight, keyboard-driven Telegram AI Client & Skill Runner"
+            homepage "https://github.com/EvgenySamarin/telepilot"
+            version "${VERSION}"
+            license "MIT"
+
+            on_macos do
+              on_arm do
+                url "https://github.com/EvgenySamarin/telepilot/releases/download/${TAG}/telepilot_${TAG}_darwin_arm64.tar.gz"
+                sha256 "${SHA_DARWIN_ARM64}"
+              end
+
+              on_intel do
+                url "https://github.com/EvgenySamarin/telepilot/releases/download/${TAG}/telepilot_${TAG}_darwin_amd64.tar.gz"
+                sha256 "${SHA_DARWIN_AMD64}"
+              end
+            end
+
+            on_linux do
+              on_intel do
+                url "https://github.com/EvgenySamarin/telepilot/releases/download/${TAG}/telepilot_${TAG}_linux_amd64.tar.gz"
+                sha256 "${SHA_LINUX_AMD64}"
+              end
+            end
+
+            def install
+              bin.install "telepilot"
+              bin.install "tgp"
+            end
+
+            test do
+              assert_match version.to_s, shell_output("#{bin}/telepilot --version")
+              assert_predicate bin/"tgp", :exist?
+            end
+          end
+          EOF
+
+          cd /tmp/homebrew-tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/telepilot.rb
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: update telepilot to ${TAG}"
+            git push origin main
+          fi
