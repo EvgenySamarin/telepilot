@@ -27,7 +27,9 @@ func TestConfigLanguageDefaultAndSave(t *testing.T) {
 	}
 
 	// 1. Initial save with language "en"
-	cfg.SaveCredentials(cfg.TelegramAPIID, cfg.TelegramAPIHash, cfg.TelegramServerIP, cfg.TelegramServerPort, cfg.AgyModel)
+	if err := cfg.SaveCredentials(cfg.TelegramAPIID, cfg.TelegramAPIHash, cfg.TelegramServerIP, cfg.TelegramServerPort, cfg.AgyModel); err != nil {
+		t.Fatalf("SaveCredentials failed: %v", err)
+	}
 
 	data, err := os.ReadFile(envPath)
 	if err != nil {
@@ -41,7 +43,9 @@ func TestConfigLanguageDefaultAndSave(t *testing.T) {
 	}
 
 	// 2. Switch language to Russian
-	cfg.SaveLanguage("ru")
+	if err := cfg.SaveLanguage("ru"); err != nil {
+		t.Fatalf("SaveLanguage('ru') failed: %v", err)
+	}
 	if !cfg.IsRussian() {
 		t.Errorf("expected IsRussian() to be true after SaveLanguage('ru')")
 	}
@@ -65,7 +69,9 @@ func TestConfigLanguageDefaultAndSave(t *testing.T) {
 	}
 
 	// 4. Switch back to En
-	cfg.SaveLanguage("en")
+	if err := cfg.SaveLanguage("en"); err != nil {
+		t.Fatalf("SaveLanguage('en') failed: %v", err)
+	}
 	loaded = Load()
 	if loaded.Language != "en" {
 		t.Errorf("Load() got Language = %q; want 'en'", loaded.Language)

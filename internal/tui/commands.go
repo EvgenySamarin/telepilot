@@ -330,7 +330,10 @@ func (m *Model) saveFormCredentials() {
 		}
 	}
 	agyModel := strings.TrimSpace(m.formFields[3])
-	m.cfg.SaveCredentials(apiID, apiHash, serverIP, serverPort, agyModel)
+	if err := m.cfg.SaveCredentials(apiID, apiHash, serverIP, serverPort, agyModel); err != nil {
+		m.addTrace(fmt.Sprintf("Failed to save credentials to .env: %v", err))
+		m.statusText = fmt.Sprintf("Failed to save .env: %v", err)
+	}
 }
 
 func (m *Model) saveAIConfigForm() {
@@ -341,7 +344,10 @@ func (m *Model) saveAIConfigForm() {
 		m.aiFormFields[1] = agyModel
 	}
 	m.formFields[3] = agyModel
-	m.cfg.SaveAIConfig(agyBin, agyModel)
+	if err := m.cfg.SaveAIConfig(agyBin, agyModel); err != nil {
+		m.addTrace(fmt.Sprintf("Failed to save AI config to .env: %v", err))
+		m.statusText = fmt.Sprintf("Failed to save .env: %v", err)
+	}
 }
 
 func (m *Model) startAITestCmd() tea.Cmd {

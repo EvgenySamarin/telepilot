@@ -196,14 +196,14 @@ func (c *AppConfig) ActiveModelLabel() string {
 /*
 SaveAIConfig updates the AGY CLI binary path and model preset and persists them to .env.
 */
-func (c *AppConfig) SaveAIConfig(agyBinPath, agyModel string) {
+func (c *AppConfig) SaveAIConfig(agyBinPath, agyModel string) error {
 	c.AgyCLIBinPath = strings.TrimSpace(agyBinPath)
 	if strings.TrimSpace(agyModel) != "" {
 		c.AgyModel = strings.TrimSpace(agyModel)
 	} else if strings.TrimSpace(c.AgyModel) == "" {
 		c.AgyModel = "auto"
 	}
-	c.SaveCredentials(c.TelegramAPIID, c.TelegramAPIHash, c.TelegramServerIP, c.TelegramServerPort, c.AgyModel)
+	return c.SaveCredentials(c.TelegramAPIID, c.TelegramAPIHash, c.TelegramServerIP, c.TelegramServerPort, c.AgyModel)
 }
 
 /*
@@ -233,7 +233,7 @@ func (c *AppConfig) GetPeriodFolder(chatTitle string, start, end time.Time) stri
 /*
 SaveCredentials updates Telegram API credentials, server endpoint, and AI model in memory and persists them to .env.
 */
-func (c *AppConfig) SaveCredentials(apiID int, apiHash, serverIP string, serverPort int, agyModel string) {
+func (c *AppConfig) SaveCredentials(apiID int, apiHash, serverIP string, serverPort int, agyModel string) error {
 	if apiID > 0 {
 		c.TelegramAPIID = apiID
 	}
@@ -277,20 +277,25 @@ func (c *AppConfig) SaveCredentials(apiID int, apiHash, serverIP string, serverP
 		fmt.Sprintf("APP_LANGUAGE=%s", langToSave),
 		"EXPORTS_DIR=exports",
 	}
-	_ = os.WriteFile(envPath, []byte(strings.Join(lines, "\n")+"\n"), 0o600)
-	_ = os.Chmod(envPath, 0o600)
+	if err := os.WriteFile(envPath, []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
+		return fmt.Errorf("write .env: %w", err)
+	}
+	if err := os.Chmod(envPath, 0o600); err != nil {
+		return fmt.Errorf("chmod .env: %w", err)
+	}
+	return nil
 }
 
 /*
 SaveLanguage updates and persists the preferred UI & skills language ("en" or "ru").
 */
-func (c *AppConfig) SaveLanguage(lang string) {
+func (c *AppConfig) SaveLanguage(lang string) error {
 	if strings.ToLower(strings.TrimSpace(lang)) == "ru" {
 		c.Language = "ru"
 	} else {
 		c.Language = "en"
 	}
-	c.SaveCredentials(c.TelegramAPIID, c.TelegramAPIHash, c.TelegramServerIP, c.TelegramServerPort, c.AgyModel)
+	return c.SaveCredentials(c.TelegramAPIID, c.TelegramAPIHash, c.TelegramServerIP, c.TelegramServerPort, c.AgyModel)
 }
 
 /*
@@ -303,12 +308,12 @@ func (c *AppConfig) IsRussian() bool {
 /*
 SaveSkillSettings persists the active summary skill and the extra run notes to .env.
 */
-func (c *AppConfig) SaveSkillSettings(skillName, notes string) {
+func (c *AppConfig) SaveSkillSettings(skillName, notes string) error {
 	if s := strings.TrimSpace(skillName); s != "" {
 		c.DefaultSkill = s
 	}
 	c.DefaultNotes = strings.TrimSpace(notes)
-	c.SaveCredentials(c.TelegramAPIID, c.TelegramAPIHash, c.TelegramServerIP, c.TelegramServerPort, c.AgyModel)
+	return c.SaveCredentials(c.TelegramAPIID, c.TelegramAPIHash, c.TelegramServerIP, c.TelegramServerPort, c.AgyModel)
 }
 
 var nonWordRe = regexp.MustCompile(`[^\p{L}\p{N}\s_-]+`)

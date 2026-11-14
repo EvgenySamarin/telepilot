@@ -467,27 +467,15 @@ func (m *Model) handleModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					if m.cfgLangIndex == 1 {
 						newLang = "ru"
 					}
-					m.cfg.SaveLanguage(newLang)
-					m.statusText = m.T("status_ready")
-					if newLang == "ru" {
-						m.addTrace("Язык интерфейса изменен на русский (ru). Настройки сохранены в .env.")
-					} else {
-						m.addTrace("Interface language switched to English (en). Settings saved to .env.")
-					}
+					m.setUILanguage(newLang)
 					return m, nil
 
 				case "1", "e", "E":
-					m.cfgLangIndex = 0
-					m.cfg.SaveLanguage("en")
-					m.statusText = m.T("status_ready")
-					m.addTrace("Interface language switched to English (en). Settings saved to .env.")
+					m.setUILanguage("en")
 					return m, nil
 
 				case "2", "r", "R":
-					m.cfgLangIndex = 1
-					m.cfg.SaveLanguage("ru")
-					m.statusText = m.T("status_ready")
-					m.addTrace("Язык интерфейса изменен на русский (ru). Настройки сохранены в .env.")
+					m.setUILanguage("ru")
 					return m, nil
 
 				case "enter":
@@ -602,18 +590,12 @@ func (m *Model) handleModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 		case "1", "e", "E":
 			// Direct shortcut to switch language
-			m.cfgLangIndex = 0
-			m.cfg.SaveLanguage("en")
-			m.statusText = m.T("status_ready")
-			m.addTrace("Interface language switched to English (en). Settings saved to .env.")
+			m.setUILanguage("en")
 			return m, nil
 
 		case "2", "r", "R":
 			// Direct shortcut to switch language
-			m.cfgLangIndex = 1
-			m.cfg.SaveLanguage("ru")
-			m.statusText = m.T("status_ready")
-			m.addTrace("Язык интерфейса изменен на русский (ru). Настройки сохранены в .env.")
+			m.setUILanguage("ru")
 			return m, nil
 
 		case " ":
@@ -624,13 +606,7 @@ func (m *Model) handleModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				if m.cfgLangIndex == 1 {
 					newLang = "ru"
 				}
-				m.cfg.SaveLanguage(newLang)
-				m.statusText = m.T("status_ready")
-				if newLang == "ru" {
-					m.addTrace("Язык интерфейса изменен на русский (ru). Настройки сохранены в .env.")
-				} else {
-					m.addTrace("Interface language switched to English (en). Settings saved to .env.")
-				}
+				m.setUILanguage(newLang)
 			}
 			return m, nil
 
@@ -1309,4 +1285,23 @@ func (m *Model) handleMainKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+func (m *Model) setUILanguage(lang string) {
+	if lang == "ru" {
+		m.cfgLangIndex = 1
+	} else {
+		m.cfgLangIndex = 0
+	}
+	if err := m.cfg.SaveLanguage(lang); err != nil {
+		m.addTrace(fmt.Sprintf("Failed to save language to .env: %v", err))
+		m.statusText = fmt.Sprintf("Failed to save .env: %v", err)
+		return
+	}
+	m.statusText = m.T("status_ready")
+	if lang == "ru" {
+		m.addTrace("Язык интерфейса изменен на русский (ru). Настройки сохранены в .env.")
+	} else {
+		m.addTrace("Interface language switched to English (en). Settings saved to .env.")
+	}
 }
