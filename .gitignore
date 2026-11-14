@@ -18,7 +18,7 @@
 *.sqlite3
 telegram_login_qr.png
 .initialized
-.agents/skills/.initialized
+/.agents/
 
 # User chat exports, personal voice notes, screenshots & summary reports
 /exports/
