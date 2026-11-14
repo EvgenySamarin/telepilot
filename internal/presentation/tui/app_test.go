@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1809,5 +1810,45 @@ func TestScheduledTasksLifecycle(t *testing.T) {
 	}
 	if len(m.scheduledTasks) != 0 {
 		t.Errorf("expected 0 scheduled tasks after cancelAll, got %d", len(m.scheduledTasks))
+	}
+}
+
+func TestAIQuotaStatusUpdatesInTab2(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := &config.AppConfig{
+		DataDir:      tmpDir,
+		ProjectRoot:  tmpDir,
+		DefaultSkill: config.DefaultSkillName,
+		Language:     "en",
+	}
+	m := NewModel(cfg, nil, nil, true)
+	m.activeTab = 2
+
+	// 1. Quota reached via chat reply failure
+	mUpdated, _ := m.Update(aiChatReplyGeneratedMsg{
+		chat: m.chats[0],
+		err:  fmt.Errorf("exit status 3 (error: Individual quota reached. Please upgrade)"),
+	})
+	m = mUpdated.(*Model)
+	if !strings.Contains(m.aiQuotaStatus, "[QUOTA REACHED]") {
+		t.Fatalf("expected [QUOTA REACHED], got %q", m.aiQuotaStatus)
+	}
+	tab2 := strings.Join(m.renderRePromptTab(nil, 100), "\n")
+	if !strings.Contains(tab2, "Quota & Health:") || !strings.Contains(tab2, "[QUOTA REACHED]") {
+		t.Errorf("expected Tab 2 to render Quota & Health with [QUOTA REACHED], got:\n%s", tab2)
+	}
+
+	// 2. Timeout via single-shot aiQuotaUpdatedMsg
+	mUpdated, _ = m.Update(aiQuotaUpdatedMsg{err: fmt.Errorf("signal: killed")})
+	m = mUpdated.(*Model)
+	if !strings.Contains(m.aiQuotaStatus, "[TIMEOUT]") {
+		t.Fatalf("expected [TIMEOUT], got %q", m.aiQuotaStatus)
+	}
+
+	// 3. Recovers to [OK] on successful AI test
+	mUpdated, _ = m.Update(aiTestDoneMsg{ok: true, line: "[OK] Connected"})
+	m = mUpdated.(*Model)
+	if !strings.Contains(m.aiQuotaStatus, "[OK]") {
+		t.Fatalf("expected [OK] after recovery, got %q", m.aiQuotaStatus)
 	}
 }

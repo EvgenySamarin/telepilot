@@ -132,6 +132,10 @@ type chatSingleShotRunner struct {
 
 type parseLogMsg string
 
+type aiQuotaUpdatedMsg struct {
+	err error
+}
+
 type parseDoneMsg struct {
 	record *storage.SkillOutputRecord
 	err    error
@@ -228,9 +232,10 @@ type Model struct {
 	// AI Engine Configuration modal state
 	aiFormFields [2]string // 0: AGY CLI Path, 1: AGY Model
 	aiFormFocus  int
-	aiTesting    bool
-	aiPassed     bool
-	aiStatusLine string
+	aiTesting     bool
+	aiPassed      bool
+	aiStatusLine  string
+	aiQuotaStatus string
 
 	// Skills (Tab 2): loaded from <project>/.agents/skills
 	skillList         []skills.Skill
@@ -393,7 +398,8 @@ func NewModel(cfg *config.AppConfig, aiEngine *ai.Engine, mtSvc *mtproto.Service
 			cfg.AgyCLIBin(),
 			cfg.AgyModel,
 		},
-		aiStatusLine: initialAIStatusLine(cfg),
+		aiStatusLine:  initialAIStatusLine(cfg),
+		aiQuotaStatus: initialAIQuotaStatus(cfg),
 	}
 
 	_ = skills.EnsureDefaults(cfg.SkillsDir())
@@ -1025,6 +1031,60 @@ func initialAIStatusLine(cfg *config.AppConfig) string {
 	return "[!] Antigravity CLI (agy) binary not found — press 'c' to configure agy path"
 }
 
+func initialAIQuotaStatus(cfg *config.AppConfig) string {
+	if cfg.AgyCLIBin() == "" {
+		if cfg.IsRussian() {
+			return "[ВЫКЛ] agy CLI не найден — нажмите 'c'"
+		}
+		return "[OFF] agy CLI not found — press 'c'"
+	}
+	if cfg.IsRussian() {
+		return "[OK] Доступна (нажмите 'c' для теста или запустите ИИ)"
+	}
+	return "[OK] Available (press 'c' to test or run AI)"
+}
+
+func (m *Model) updateAIQuotaStatus(err error) {
+	ts := time.Now().Format("15:04:05")
+	ru := m.cfg.IsRussian()
+	if err == nil {
+		if ru {
+			m.aiQuotaStatus = fmt.Sprintf("[OK] Доступна (обновлено %s)", ts)
+		} else {
+			m.aiQuotaStatus = fmt.Sprintf("[OK] Available (updated %s)", ts)
+		}
+		return
+	}
+	msg := err.Error()
+	lower := strings.ToLower(msg)
+	switch {
+	case strings.Contains(lower, "quota") || strings.Contains(lower, "exit status 3") || strings.Contains(lower, "rate limit") || strings.Contains(lower, "resource exhausted"):
+		if ru {
+			m.aiQuotaStatus = fmt.Sprintf("[QUOTA REACHED] Квота исчерпана (%s) — смените модель ('c')", ts)
+		} else {
+			m.aiQuotaStatus = fmt.Sprintf("[QUOTA REACHED] Individual quota reached (%s) — switch model ('c')", ts)
+		}
+	case strings.Contains(lower, "signal: killed") || strings.Contains(lower, "deadline exceeded"):
+		if ru {
+			m.aiQuotaStatus = fmt.Sprintf("[TIMEOUT] Превышен таймаут agy CLI (%s)", ts)
+		} else {
+			m.aiQuotaStatus = fmt.Sprintf("[TIMEOUT] agy CLI timed out (%s)", ts)
+		}
+	case strings.Contains(lower, "authentication"):
+		if ru {
+			m.aiQuotaStatus = fmt.Sprintf("[AUTH REQUIRED] Запустите 'agy' в терминале (%s)", ts)
+		} else {
+			m.aiQuotaStatus = fmt.Sprintf("[AUTH REQUIRED] Run 'agy' in terminal (%s)", ts)
+		}
+	default:
+		if ru {
+			m.aiQuotaStatus = fmt.Sprintf("[ERROR] %s (%s)", truncateSingleLine(msg, 48), ts)
+		} else {
+			m.aiQuotaStatus = fmt.Sprintf("[ERROR] %s (%s)", truncateSingleLine(msg, 48), ts)
+		}
+	}
+}
+
 func (m *Model) addTrace(msg string) {
 	ts := time.Now().Format("15:04:05")
 	line := fmt.Sprintf("[%s] %s", ts, msg)
@@ -1256,6 +1316,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, waitForUIEvent(m.uiEventCh)
 
 	case aiChatReplyGeneratedMsg:
+		m.updateAIQuotaStatus(msg.err)
 		if msg.err != nil {
 			m.statusText = "AI reply error"
 			m.addTrace(fmt.Sprintf("AI reply generation failed for '%s': %v", msg.chat.Title, msg.err))
@@ -1353,6 +1414,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case scheduledTaskExecutedMsg:
+		m.updateAIQuotaStatus(msg.err)
 		if msg.err != nil {
 			m.addTrace(fmt.Sprintf("⏰ Scheduled task failed for '%s': %v", msg.task.ChatTitle, msg.err))
 		} else {
@@ -1443,6 +1505,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.aiTesting = false
 		m.aiPassed = msg.ok
 		m.aiStatusLine = msg.line
+		if msg.ok {
+			m.updateAIQuotaStatus(nil)
+		} else {
+			m.updateAIQuotaStatus(fmt.Errorf("%s", msg.line))
+		}
 		m.addTrace("AI Engine test: " + msg.line)
 		return m, nil
 
@@ -1537,8 +1604,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusText = string(msg)
 		return m, waitForUIEvent(m.uiEventCh)
 
+	case aiQuotaUpdatedMsg:
+		m.updateAIQuotaStatus(msg.err)
+		return m, waitForUIEvent(m.uiEventCh)
+
 	case parseDoneMsg:
 		m.statusBusy = false
+		m.updateAIQuotaStatus(msg.err)
 		if msg.err != nil {
 			m.statusText = "Skill error"
 			m.addTrace(fmt.Sprintf("Chat AI skill execution failed: %v", msg.err))

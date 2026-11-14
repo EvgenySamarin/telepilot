@@ -547,9 +547,11 @@ func (m *Model) runSingleShotInstructionCmd(instruction string, appendMode bool)
 				if runCtx.Err() != nil {
 					return
 				}
+				m.uiEventCh <- aiQuotaUpdatedMsg{err: err}
 				m.uiEventCh <- parseLogMsg(fmt.Sprintf("Single-shot AI error: %v", err))
 				return
 			}
+			m.uiEventCh <- aiQuotaUpdatedMsg{err: nil}
 			m.uiEventCh <- parseLogMsg(fmt.Sprintf("AI planned %d message(s) for '%s'", len(actions), target.Title))
 
 			for idx, act := range actions {
